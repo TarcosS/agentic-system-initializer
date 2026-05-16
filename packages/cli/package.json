@@ -33,6 +33,7 @@
   },
   "files": [
     "dist",
+    "src/templates",
     "templates"
   ],
   "dependencies": {

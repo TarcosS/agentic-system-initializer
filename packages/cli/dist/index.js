@@ -333,230 +333,202 @@ async function selectAgents() {
 }
 
 // src/generators/scaffold.ts
-import { existsSync as existsSync3, mkdirSync, writeFileSync as writeFileSync2 } from "fs";
+import { existsSync as existsSync4, mkdirSync, writeFileSync as writeFileSync2 } from "fs";
+import { join as join4, dirname as dirname2 } from "path";
+
+// src/utils/template-engine.ts
+import { readFileSync as readFileSync3, existsSync as existsSync3 } from "fs";
 import { join as join3, dirname } from "path";
+import { fileURLToPath } from "url";
+var __filename = fileURLToPath(import.meta.url);
+var __dirname = dirname(__filename);
+function getTemplatesDir() {
+  const srcTemplates = join3(__dirname, "..", "templates");
+  if (existsSync3(srcTemplates)) return srcTemplates;
+  const pkgTemplates = join3(__dirname, "..", "src", "templates");
+  if (existsSync3(pkgTemplates)) return pkgTemplates;
+  return join3(process.cwd(), "node_modules", "@deopca", "agentinit", "templates");
+}
+function loadTemplate(category, name) {
+  const dir = getTemplatesDir();
+  const filePath = join3(dir, category, name);
+  if (existsSync3(filePath)) {
+    return readFileSync3(filePath, "utf-8");
+  }
+  for (const ext of [".md", ".mdc"]) {
+    const withExt = join3(dir, category, name + ext);
+    if (existsSync3(withExt)) return readFileSync3(withExt, "utf-8");
+  }
+  return null;
+}
+function fillTemplate(template, vars) {
+  let result = template;
+  for (const [key, value] of Object.entries(vars)) {
+    result = result.replaceAll(`{{${key}}}`, value);
+  }
+  return result;
+}
+function buildTemplateVars(profile, analysis) {
+  return {
+    profile: profileToMarkdown(profile),
+    role: profile.role,
+    domain: profile.domain,
+    expertise: profile.expertise.join(", ") || "not specified",
+    workingStyle: profile.workingStyle,
+    autonomy: profile.autonomy,
+    reviewStrictness: profile.reviewStrictness,
+    securityStance: profile.securityStance,
+    communication: profile.communication,
+    preferences: profile.preferences.length > 0 ? profile.preferences.map((p6) => `- ${p6}`).join("\n") : "- (none yet)",
+    projectName: analysis.name,
+    languages: analysis.languages.join(", ") || "unknown",
+    frameworks: analysis.frameworks.join(", ") || "standard tooling",
+    packageManager: analysis.packageManager,
+    monorepo: analysis.monorepo ? "yes" : "no",
+    testFramework: analysis.testFramework.join(", ") || "TBD",
+    testCommand: guessTestCommand(analysis),
+    lintCommand: guessLintCommand(analysis),
+    ciPlatform: analysis.ci.join(", ") || "none",
+    deployTarget: analysis.deployTarget.join(", ") || "TBD",
+    lockFile: guessLockFile(analysis),
+    // Placeholders for user-filled content
+    description: "{{description}}",
+    architectureNotes: "{{architectureNotes}}",
+    languageVersions: "{{languageVersions}}",
+    keyDependencies: "{{keyDependencies}}",
+    formatter: "{{formatter}}",
+    linter: "{{linter}}",
+    namingConventions: "{{namingConventions}}",
+    architecturePattern: "{{architecturePattern}}",
+    directoryStructure: "{{directoryStructure}}",
+    boundaries: "{{boundaries}}",
+    codingStandard1: "{{codingStandard1}}",
+    codingStandard2: "{{codingStandard2}}",
+    codingStandard3: "{{codingStandard3}}",
+    errorHandlingPattern: "{{errorHandlingPattern}}",
+    loggingPattern: "{{loggingPattern}}",
+    testStructure: "{{testStructure}}",
+    coverageTarget: "{{coverageTarget}}",
+    dispatchSignals: analysis.signals.map((s) => `- ${s}`).join("\n") || "- (auto-detected)",
+    branchStrategy: "{{branchStrategy}}",
+    commitStyle: "{{commitStyle}}",
+    prProcess: "{{prProcess}}",
+    commitFormat: "type(scope): description",
+    deployCommand: "{{deployCommand}}",
+    pipelineStages: "{{pipelineStages}}",
+    envVarsNote: "{{envVarsNote}}",
+    additionalSecurityRules: "{{additionalSecurityRules}}",
+    documentationStyle: "{{documentationStyle}}",
+    performanceAreas: "{{performanceAreas}}",
+    domainContext: "{{domainContext}}",
+    knownIssues: "{{knownIssues}}",
+    upcomingWork: "{{upcomingWork}}"
+  };
+}
+function guessTestCommand(analysis) {
+  if (analysis.testFramework.includes("Vitest")) return `${analysis.packageManager} run test`;
+  if (analysis.testFramework.includes("Jest")) return `${analysis.packageManager} run test`;
+  if (analysis.testFramework.includes("pytest")) return "pytest";
+  if (analysis.packageManager === "cargo") return "cargo test";
+  if (analysis.packageManager === "go") return "go test ./...";
+  return `${analysis.packageManager !== "unknown" ? analysis.packageManager : "npm"} run test`;
+}
+function guessLintCommand(analysis) {
+  if (["npm", "yarn", "pnpm", "bun"].includes(analysis.packageManager)) {
+    return `${analysis.packageManager} run lint`;
+  }
+  if (analysis.packageManager === "cargo") return "cargo clippy";
+  if (analysis.packageManager === "go") return "golangci-lint run";
+  return "npm run lint";
+}
+function guessLockFile(analysis) {
+  const map = {
+    npm: "package-lock.json",
+    yarn: "yarn.lock",
+    pnpm: "pnpm-lock.yaml",
+    bun: "bun.lockb",
+    pip: "requirements.txt",
+    poetry: "poetry.lock",
+    cargo: "Cargo.lock",
+    go: "go.sum"
+  };
+  return map[analysis.packageManager] || "unknown";
+}
+
+// src/generators/scaffold.ts
 function writeScaffold(options) {
   const { targetDir, agents, profile, analysis, overwrite = false } = options;
   const result = { created: [], skipped: [], errors: [] };
-  ensureDir(join3(targetDir, ".agents", "memory"));
-  ensureDir(join3(targetDir, ".agents", "instructions"));
+  const vars = buildTemplateVars(profile, analysis);
+  ensureDir(join4(targetDir, ".agents", "memory"));
+  ensureDir(join4(targetDir, ".agents", "instructions"));
   writeIfMissing(
-    join3(targetDir, ".agents", "profile.json"),
+    join4(targetDir, ".agents", "profile.json"),
     JSON.stringify(profile, null, 2),
     result,
     overwrite
   );
   const decisionsContent = buildDecisionsMd(analysis);
   writeIfMissing(
-    join3(targetDir, ".agents", "memory", "decisions.md"),
+    join4(targetDir, ".agents", "memory", "decisions.md"),
     decisionsContent,
     result,
     overwrite
   );
   const sharedInstructions = buildSharedInstructions(profile, analysis);
   writeIfMissing(
-    join3(targetDir, ".agents", "instructions", "shared.md"),
+    join4(targetDir, ".agents", "instructions", "shared.md"),
     sharedInstructions,
     result,
     overwrite
   );
   for (const agent of agents) {
     try {
-      scaffoldAgent(targetDir, agent, profile, analysis, result, overwrite);
+      scaffoldAgent(targetDir, agent, vars, result, overwrite);
     } catch (err) {
       result.errors.push(`Failed to scaffold ${agent}: ${err}`);
     }
   }
   return result;
 }
-function scaffoldAgent(targetDir, agent, profile, analysis, result, overwrite) {
-  const profileMd = profileToMarkdown(profile);
-  switch (agent) {
-    case "claude-code": {
-      const content = [
-        "# CLAUDE.md",
-        "",
-        profileMd,
-        "",
-        "## Project context",
-        "",
-        `This is a ${analysis.languages.join("/")} project using ${analysis.frameworks.join(", ") || "standard tooling"}.`,
-        "",
-        "## Rules",
-        "",
-        "- Read .agents/memory/decisions.md before making architectural choices",
-        "- Follow existing patterns in the codebase",
-        "- Run tests before committing",
-        "",
-        "## Memory",
-        "",
-        "See .agents/memory/decisions.md for project decisions and context."
-      ].join("\n");
-      writeIfMissing(join3(targetDir, "CLAUDE.md"), content, result, overwrite);
-      ensureDir(join3(targetDir, ".claude"));
-      break;
-    }
-    case "cursor": {
-      ensureDir(join3(targetDir, ".cursor", "rules"));
-      const content = [
-        "---",
-        "description: Core project rules",
-        "globs: **/*",
-        "---",
-        "",
-        profileMd,
-        "",
-        "## Project context",
-        "",
-        `This is a ${analysis.languages.join("/")} project using ${analysis.frameworks.join(", ") || "standard tooling"}.`,
-        "",
-        "## Rules",
-        "",
-        "- Read .agents/memory/decisions.md before making architectural choices",
-        "- Follow existing patterns in the codebase",
-        "- Run tests before committing"
-      ].join("\n");
-      writeIfMissing(join3(targetDir, ".cursor", "rules", "00-core.mdc"), content, result, overwrite);
-      break;
-    }
-    case "codex": {
-      const content = [
-        "# AGENTS.md",
-        "",
-        profileMd,
-        "",
-        "## Project context",
-        "",
-        `This is a ${analysis.languages.join("/")} project using ${analysis.frameworks.join(", ") || "standard tooling"}.`,
-        "",
-        "## Instructions",
-        "",
-        "- Read .agents/memory/decisions.md before making architectural choices",
-        "- Follow existing patterns in the codebase",
-        "- Run tests before committing"
-      ].join("\n");
-      writeIfMissing(join3(targetDir, "AGENTS.md"), content, result, overwrite);
-      break;
-    }
-    case "copilot": {
-      ensureDir(join3(targetDir, ".github"));
-      const content = [
-        "# Copilot Instructions",
-        "",
-        profileMd,
-        "",
-        "## Project context",
-        "",
-        `This is a ${analysis.languages.join("/")} project using ${analysis.frameworks.join(", ") || "standard tooling"}.`,
-        "",
-        "## Rules",
-        "",
-        "- Read .agents/memory/decisions.md before making architectural choices",
-        "- Follow existing patterns in the codebase",
-        "- Run tests before committing"
-      ].join("\n");
-      writeIfMissing(join3(targetDir, ".github", "copilot-instructions.md"), content, result, overwrite);
-      break;
-    }
-    case "gemini-cli": {
-      const content = [
-        "# GEMINI.md",
-        "",
-        profileMd,
-        "",
-        "## Project context",
-        "",
-        `This is a ${analysis.languages.join("/")} project using ${analysis.frameworks.join(", ") || "standard tooling"}.`,
-        "",
-        "## Rules",
-        "",
-        "- Read .agents/memory/decisions.md before making architectural choices",
-        "- Follow existing patterns in the codebase",
-        "- Run tests before committing"
-      ].join("\n");
-      writeIfMissing(join3(targetDir, "GEMINI.md"), content, result, overwrite);
-      break;
-    }
-    case "cline": {
-      ensureDir(join3(targetDir, ".clinerules"));
-      const content = [
-        profileMd,
-        "",
-        "## Project context",
-        "",
-        `This is a ${analysis.languages.join("/")} project using ${analysis.frameworks.join(", ") || "standard tooling"}.`,
-        "",
-        "## Rules",
-        "",
-        "- Read .agents/memory/decisions.md before making architectural choices",
-        "- Follow existing patterns in the codebase",
-        "- Run tests before committing"
-      ].join("\n");
-      writeIfMissing(join3(targetDir, ".clinerules", "00-core.md"), content, result, overwrite);
-      break;
-    }
-    case "windsurf": {
-      ensureDir(join3(targetDir, ".windsurf", "rules"));
-      const content = [
-        "---",
-        "trigger: always",
-        "---",
-        "",
-        profileMd,
-        "",
-        "## Project context",
-        "",
-        `This is a ${analysis.languages.join("/")} project using ${analysis.frameworks.join(", ") || "standard tooling"}.`,
-        "",
-        "## Rules",
-        "",
-        "- Read .agents/memory/decisions.md before making architectural choices",
-        "- Follow existing patterns in the codebase",
-        "- Run tests before committing"
-      ].join("\n");
-      writeIfMissing(join3(targetDir, ".windsurf", "rules", "general.md"), content, result, overwrite);
-      break;
-    }
-    case "roo-code": {
-      ensureDir(join3(targetDir, ".roo", "rules"));
-      const content = [
-        profileMd,
-        "",
-        "## Project context",
-        "",
-        `This is a ${analysis.languages.join("/")} project using ${analysis.frameworks.join(", ") || "standard tooling"}.`,
-        "",
-        "## Rules",
-        "",
-        "- Read .agents/memory/decisions.md before making architectural choices",
-        "- Follow existing patterns in the codebase"
-      ].join("\n");
-      writeIfMissing(join3(targetDir, ".roo", "rules", "00-core.md"), content, result, overwrite);
-      break;
-    }
-    case "kilo-code": {
-      ensureDir(join3(targetDir, ".kilocode", "rules"));
-      const content = [
-        profileMd,
-        "",
-        "## Project context",
-        "",
-        `This is a ${analysis.languages.join("/")} project using ${analysis.frameworks.join(", ") || "standard tooling"}.`,
-        "",
-        "## Rules",
-        "",
-        "- Read .agents/memory/decisions.md before making architectural choices",
-        "- Follow existing patterns in the codebase"
-      ].join("\n");
-      writeIfMissing(join3(targetDir, ".kilocode", "rules", "00-core.md"), content, result, overwrite);
-      break;
-    }
-    case "aider":
-    case "generic":
-    default: {
-      break;
-    }
+var AGENT_FILE_MAP = {
+  "claude-code": { path: "CLAUDE.md", templateName: "claude-code.md" },
+  cursor: { path: ".cursor/rules/00-core.mdc", templateName: "cursor.mdc" },
+  codex: { path: "AGENTS.md", templateName: "codex.md" },
+  copilot: { path: ".github/copilot-instructions.md", templateName: "copilot.md" },
+  "gemini-cli": { path: "GEMINI.md", templateName: "gemini-cli.md" },
+  cline: { path: ".clinerules/00-core.md", templateName: "cline.md" },
+  windsurf: { path: ".windsurf/rules/general.md", templateName: "windsurf.md" },
+  "roo-code": { path: ".roo/rules/00-core.md", templateName: "roo-code.md" },
+  "kilo-code": { path: ".kilocode/rules/00-core.md", templateName: "kilo-code.md" },
+  aider: { path: ".aider/instructions.md", templateName: "generic.md" },
+  generic: { path: ".agents/instructions/agent.md", templateName: "generic.md" }
+};
+function scaffoldAgent(targetDir, agent, vars, result, overwrite) {
+  const mapping = AGENT_FILE_MAP[agent];
+  if (!mapping) return;
+  const template = loadTemplate("agents", mapping.templateName);
+  if (!template) {
+    const fallbackContent = [
+      vars.profile,
+      "",
+      "## Project context",
+      "",
+      `This is a ${vars.languages} project using ${vars.frameworks}.`,
+      "",
+      "## Rules",
+      "",
+      "- Read .agents/memory/decisions.md before making architectural choices",
+      "- Follow existing patterns in the codebase",
+      "- Run tests before committing"
+    ].join("\n");
+    const filePath2 = join4(targetDir, mapping.path);
+    writeIfMissing(filePath2, fallbackContent, result, overwrite);
+    return;
   }
+  const content = fillTemplate(template, vars);
+  const filePath = join4(targetDir, mapping.path);
+  writeIfMissing(filePath, content, result, overwrite);
 }
 function buildDecisionsMd(analysis) {
   return [
@@ -606,13 +578,13 @@ function buildSharedInstructions(profile, analysis) {
   ].join("\n");
 }
 function ensureDir(dir) {
-  if (!existsSync3(dir)) {
+  if (!existsSync4(dir)) {
     mkdirSync(dir, { recursive: true });
   }
 }
 function writeIfMissing(filePath, content, result, overwrite) {
-  ensureDir(dirname(filePath));
-  if (existsSync3(filePath) && !overwrite) {
+  ensureDir(dirname2(filePath));
+  if (existsSync4(filePath) && !overwrite) {
     result.skipped.push(filePath);
     return;
   }
@@ -628,8 +600,8 @@ function writeIfMissing(filePath, content, result, overwrite) {
 import { Command as Command2 } from "commander";
 import * as p3 from "@clack/prompts";
 import chalk2 from "chalk";
-import { existsSync as existsSync4, readFileSync as readFileSync3 } from "fs";
-import { join as join4 } from "path";
+import { existsSync as existsSync5, readFileSync as readFileSync4 } from "fs";
+import { join as join5 } from "path";
 import fg2 from "fast-glob";
 var AGENT_PATHS = {
   "claude-code": ["CLAUDE.md", ".claude/settings.json", ".claude/mcp.json"],
@@ -649,7 +621,7 @@ async function validate(targetDir, agents) {
   const sharedFiles = ["AGENTS.md", "how-to-use-skills.sh"];
   for (const file of sharedFiles) {
     total++;
-    if (existsSync4(join4(targetDir, file))) {
+    if (existsSync5(join5(targetDir, file))) {
       passed++;
     } else {
       issues.push(`Missing shared file: ${file}`);
@@ -661,7 +633,7 @@ async function validate(targetDir, agents) {
     if (!paths) continue;
     for (const filePath of paths) {
       total++;
-      if (existsSync4(join4(targetDir, filePath))) {
+      if (existsSync5(join5(targetDir, filePath))) {
         passed++;
       } else {
         issues.push(`Missing ${agent} file: ${filePath}`);
@@ -674,7 +646,7 @@ async function validate(targetDir, agents) {
     absolute: true
   });
   for (const file of mdFiles) {
-    const content = readFileSync3(file, "utf-8");
+    const content = readFileSync4(file, "utf-8");
     const placeholders = content.match(/<[a-z][a-z\s\-]*>/g);
     if (placeholders && placeholders.length > 0) {
       const relativePath = file.replace(targetDir + "/", "");
@@ -685,7 +657,7 @@ async function validate(targetDir, agents) {
     }
   }
   total++;
-  if (existsSync4(join4(targetDir, "skills-lock.json"))) {
+  if (existsSync5(join5(targetDir, "skills-lock.json"))) {
     passed++;
   } else {
     issues.push("skills-lock.json not found (run npx skills to generate)");
@@ -700,7 +672,7 @@ async function validate(targetDir, agents) {
     ".gemini/memory/decisions.md"
   ];
   total++;
-  const hasMemory = memoryPaths.some((p6) => existsSync4(join4(targetDir, p6)));
+  const hasMemory = memoryPaths.some((p6) => existsSync5(join5(targetDir, p6)));
   if (hasMemory) {
     passed++;
   } else {
@@ -710,16 +682,16 @@ async function validate(targetDir, agents) {
 }
 function detectAgents(targetDir) {
   const detected = [];
-  if (existsSync4(join4(targetDir, ".claude"))) detected.push("claude-code");
-  if (existsSync4(join4(targetDir, ".cursor"))) detected.push("cursor");
-  if (existsSync4(join4(targetDir, ".codex"))) detected.push("codex");
-  if (existsSync4(join4(targetDir, ".github", "copilot-instructions.md")))
+  if (existsSync5(join5(targetDir, ".claude"))) detected.push("claude-code");
+  if (existsSync5(join5(targetDir, ".cursor"))) detected.push("cursor");
+  if (existsSync5(join5(targetDir, ".codex"))) detected.push("codex");
+  if (existsSync5(join5(targetDir, ".github", "copilot-instructions.md")))
     detected.push("copilot");
-  if (existsSync4(join4(targetDir, "GEMINI.md"))) detected.push("gemini-cli");
-  if (existsSync4(join4(targetDir, ".clinerules"))) detected.push("cline");
-  if (existsSync4(join4(targetDir, ".windsurf"))) detected.push("windsurf");
-  if (existsSync4(join4(targetDir, ".roo"))) detected.push("roo-code");
-  if (existsSync4(join4(targetDir, ".kilocode"))) detected.push("kilo-code");
+  if (existsSync5(join5(targetDir, "GEMINI.md"))) detected.push("gemini-cli");
+  if (existsSync5(join5(targetDir, ".clinerules"))) detected.push("cline");
+  if (existsSync5(join5(targetDir, ".windsurf"))) detected.push("windsurf");
+  if (existsSync5(join5(targetDir, ".roo"))) detected.push("roo-code");
+  if (existsSync5(join5(targetDir, ".kilocode"))) detected.push("kilo-code");
   return detected;
 }
 var validateCommand = new Command2("validate").description("Health-check: verify scaffold integrity, find unfilled placeholders").argument("[directory]", "Target directory", ".").action(async (directory) => {
@@ -823,14 +795,14 @@ function getDefaultProfile() {
 import { Command as Command4 } from "commander";
 import * as p5 from "@clack/prompts";
 import chalk4 from "chalk";
-import { writeFileSync as writeFileSync3, existsSync as existsSync5 } from "fs";
-import { join as join5, resolve } from "path";
+import { writeFileSync as writeFileSync3, existsSync as existsSync6 } from "fs";
+import { join as join6, resolve } from "path";
 
 // src/generators/prompt.ts
-import { readFileSync as readFileSync4 } from "fs";
+import { readFileSync as readFileSync5 } from "fs";
 function generatePrompt(options) {
   const { specPath, agent, profile, analysis } = options;
-  const spec = readFileSync4(specPath, "utf-8");
+  const spec = readFileSync5(specPath, "utf-8");
   const lines = spec.split("\n");
   const sections = [];
   sections.push(buildHeader(agent, analysis));
@@ -949,7 +921,7 @@ var generateCommand = new Command4("generate").description("Generate a slimmed-d
     return;
   }
   const specPath = options.spec ?? findSpecFile(targetDir);
-  if (!specPath || !existsSync5(specPath)) {
+  if (!specPath || !existsSync6(specPath)) {
     p5.log.error(
       "Cannot find agentic-system-initializer.md. Use --spec to provide path."
     );
@@ -1012,9 +984,9 @@ var generateCommand = new Command4("generate").description("Generate a slimmed-d
 function findSpecFile(startDir) {
   let dir = startDir;
   for (let i = 0; i < 5; i++) {
-    const candidate = join5(dir, "agentic-system-initializer.md");
-    if (existsSync5(candidate)) return candidate;
-    const parent = join5(dir, "..");
+    const candidate = join6(dir, "agentic-system-initializer.md");
+    if (existsSync6(candidate)) return candidate;
+    const parent = join6(dir, "..");
     if (parent === dir) break;
     dir = parent;
   }

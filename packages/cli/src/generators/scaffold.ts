@@ -4,6 +4,7 @@ import type { AgentId } from "../utils/agent-selector.js";
 import type { UserProfile } from "../commands/profile.js";
 import { profileToMarkdown } from "../commands/profile.js";
 import type { ProjectAnalysis } from "../analyzers/project.js";
+import { loadTemplate, fillTemplate, buildTemplateVars } from "../utils/template-engine.js";
 
 export interface ScaffoldOptions {
   targetDir: string;
@@ -22,6 +23,7 @@ export interface ScaffoldResult {
 export function writeScaffold(options: ScaffoldOptions): ScaffoldResult {
   const { targetDir, agents, profile, analysis, overwrite = false } = options;
   const result: ScaffoldResult = { created: [], skipped: [], errors: [] };
+  const vars = buildTemplateVars(profile, analysis);
 
   // 1. Create shared .agents directory
   ensureDir(join(targetDir, ".agents", "memory"));
@@ -53,10 +55,10 @@ export function writeScaffold(options: ScaffoldOptions): ScaffoldResult {
     overwrite
   );
 
-  // 5. Write agent-specific scaffolds
+  // 5. Write agent-specific scaffolds from templates
   for (const agent of agents) {
     try {
-      scaffoldAgent(targetDir, agent, profile, analysis, result, overwrite);
+      scaffoldAgent(targetDir, agent, vars, result, overwrite);
     } catch (err) {
       result.errors.push(`Failed to scaffold ${agent}: ${err}`);
     }
@@ -65,212 +67,54 @@ export function writeScaffold(options: ScaffoldOptions): ScaffoldResult {
   return result;
 }
 
+const AGENT_FILE_MAP: Record<AgentId, { path: string; templateName: string }> = {
+  "claude-code": { path: "CLAUDE.md", templateName: "claude-code.md" },
+  cursor: { path: ".cursor/rules/00-core.mdc", templateName: "cursor.mdc" },
+  codex: { path: "AGENTS.md", templateName: "codex.md" },
+  copilot: { path: ".github/copilot-instructions.md", templateName: "copilot.md" },
+  "gemini-cli": { path: "GEMINI.md", templateName: "gemini-cli.md" },
+  cline: { path: ".clinerules/00-core.md", templateName: "cline.md" },
+  windsurf: { path: ".windsurf/rules/general.md", templateName: "windsurf.md" },
+  "roo-code": { path: ".roo/rules/00-core.md", templateName: "roo-code.md" },
+  "kilo-code": { path: ".kilocode/rules/00-core.md", templateName: "kilo-code.md" },
+  aider: { path: ".aider/instructions.md", templateName: "generic.md" },
+  generic: { path: ".agents/instructions/agent.md", templateName: "generic.md" },
+};
+
 function scaffoldAgent(
   targetDir: string,
   agent: AgentId,
-  profile: UserProfile,
-  analysis: ProjectAnalysis,
+  vars: Record<string, string>,
   result: ScaffoldResult,
   overwrite: boolean
 ): void {
-  const profileMd = profileToMarkdown(profile);
+  const mapping = AGENT_FILE_MAP[agent];
+  if (!mapping) return;
 
-  switch (agent) {
-    case "claude-code": {
-      const content = [
-        "# CLAUDE.md",
-        "",
-        profileMd,
-        "",
-        "## Project context",
-        "",
-        `This is a ${analysis.languages.join("/")} project using ${analysis.frameworks.join(", ") || "standard tooling"}.`,
-        "",
-        "## Rules",
-        "",
-        "- Read .agents/memory/decisions.md before making architectural choices",
-        "- Follow existing patterns in the codebase",
-        "- Run tests before committing",
-        "",
-        "## Memory",
-        "",
-        "See .agents/memory/decisions.md for project decisions and context.",
-      ].join("\n");
-      writeIfMissing(join(targetDir, "CLAUDE.md"), content, result, overwrite);
-      ensureDir(join(targetDir, ".claude"));
-      break;
-    }
-
-    case "cursor": {
-      ensureDir(join(targetDir, ".cursor", "rules"));
-      const content = [
-        "---",
-        "description: Core project rules",
-        "globs: **/*",
-        "---",
-        "",
-        profileMd,
-        "",
-        "## Project context",
-        "",
-        `This is a ${analysis.languages.join("/")} project using ${analysis.frameworks.join(", ") || "standard tooling"}.`,
-        "",
-        "## Rules",
-        "",
-        "- Read .agents/memory/decisions.md before making architectural choices",
-        "- Follow existing patterns in the codebase",
-        "- Run tests before committing",
-      ].join("\n");
-      writeIfMissing(join(targetDir, ".cursor", "rules", "00-core.mdc"), content, result, overwrite);
-      break;
-    }
-
-    case "codex": {
-      const content = [
-        "# AGENTS.md",
-        "",
-        profileMd,
-        "",
-        "## Project context",
-        "",
-        `This is a ${analysis.languages.join("/")} project using ${analysis.frameworks.join(", ") || "standard tooling"}.`,
-        "",
-        "## Instructions",
-        "",
-        "- Read .agents/memory/decisions.md before making architectural choices",
-        "- Follow existing patterns in the codebase",
-        "- Run tests before committing",
-      ].join("\n");
-      writeIfMissing(join(targetDir, "AGENTS.md"), content, result, overwrite);
-      break;
-    }
-
-    case "copilot": {
-      ensureDir(join(targetDir, ".github"));
-      const content = [
-        "# Copilot Instructions",
-        "",
-        profileMd,
-        "",
-        "## Project context",
-        "",
-        `This is a ${analysis.languages.join("/")} project using ${analysis.frameworks.join(", ") || "standard tooling"}.`,
-        "",
-        "## Rules",
-        "",
-        "- Read .agents/memory/decisions.md before making architectural choices",
-        "- Follow existing patterns in the codebase",
-        "- Run tests before committing",
-      ].join("\n");
-      writeIfMissing(join(targetDir, ".github", "copilot-instructions.md"), content, result, overwrite);
-      break;
-    }
-
-    case "gemini-cli": {
-      const content = [
-        "# GEMINI.md",
-        "",
-        profileMd,
-        "",
-        "## Project context",
-        "",
-        `This is a ${analysis.languages.join("/")} project using ${analysis.frameworks.join(", ") || "standard tooling"}.`,
-        "",
-        "## Rules",
-        "",
-        "- Read .agents/memory/decisions.md before making architectural choices",
-        "- Follow existing patterns in the codebase",
-        "- Run tests before committing",
-      ].join("\n");
-      writeIfMissing(join(targetDir, "GEMINI.md"), content, result, overwrite);
-      break;
-    }
-
-    case "cline": {
-      ensureDir(join(targetDir, ".clinerules"));
-      const content = [
-        profileMd,
-        "",
-        "## Project context",
-        "",
-        `This is a ${analysis.languages.join("/")} project using ${analysis.frameworks.join(", ") || "standard tooling"}.`,
-        "",
-        "## Rules",
-        "",
-        "- Read .agents/memory/decisions.md before making architectural choices",
-        "- Follow existing patterns in the codebase",
-        "- Run tests before committing",
-      ].join("\n");
-      writeIfMissing(join(targetDir, ".clinerules", "00-core.md"), content, result, overwrite);
-      break;
-    }
-
-    case "windsurf": {
-      ensureDir(join(targetDir, ".windsurf", "rules"));
-      const content = [
-        "---",
-        "trigger: always",
-        "---",
-        "",
-        profileMd,
-        "",
-        "## Project context",
-        "",
-        `This is a ${analysis.languages.join("/")} project using ${analysis.frameworks.join(", ") || "standard tooling"}.`,
-        "",
-        "## Rules",
-        "",
-        "- Read .agents/memory/decisions.md before making architectural choices",
-        "- Follow existing patterns in the codebase",
-        "- Run tests before committing",
-      ].join("\n");
-      writeIfMissing(join(targetDir, ".windsurf", "rules", "general.md"), content, result, overwrite);
-      break;
-    }
-
-    case "roo-code": {
-      ensureDir(join(targetDir, ".roo", "rules"));
-      const content = [
-        profileMd,
-        "",
-        "## Project context",
-        "",
-        `This is a ${analysis.languages.join("/")} project using ${analysis.frameworks.join(", ") || "standard tooling"}.`,
-        "",
-        "## Rules",
-        "",
-        "- Read .agents/memory/decisions.md before making architectural choices",
-        "- Follow existing patterns in the codebase",
-      ].join("\n");
-      writeIfMissing(join(targetDir, ".roo", "rules", "00-core.md"), content, result, overwrite);
-      break;
-    }
-
-    case "kilo-code": {
-      ensureDir(join(targetDir, ".kilocode", "rules"));
-      const content = [
-        profileMd,
-        "",
-        "## Project context",
-        "",
-        `This is a ${analysis.languages.join("/")} project using ${analysis.frameworks.join(", ") || "standard tooling"}.`,
-        "",
-        "## Rules",
-        "",
-        "- Read .agents/memory/decisions.md before making architectural choices",
-        "- Follow existing patterns in the codebase",
-      ].join("\n");
-      writeIfMissing(join(targetDir, ".kilocode", "rules", "00-core.md"), content, result, overwrite);
-      break;
-    }
-
-    case "aider":
-    case "generic":
-    default: {
-      // Generic: just ensure shared files exist
-      break;
-    }
+  const template = loadTemplate("agents", mapping.templateName);
+  if (!template) {
+    // Fallback to inline content if template not found
+    const fallbackContent = [
+      vars.profile,
+      "",
+      "## Project context",
+      "",
+      `This is a ${vars.languages} project using ${vars.frameworks}.`,
+      "",
+      "## Rules",
+      "",
+      "- Read .agents/memory/decisions.md before making architectural choices",
+      "- Follow existing patterns in the codebase",
+      "- Run tests before committing",
+    ].join("\n");
+    const filePath = join(targetDir, mapping.path);
+    writeIfMissing(filePath, fallbackContent, result, overwrite);
+    return;
   }
+
+  const content = fillTemplate(template, vars);
+  const filePath = join(targetDir, mapping.path);
+  writeIfMissing(filePath, content, result, overwrite);
 }
 
 function buildDecisionsMd(analysis: ProjectAnalysis): string {
