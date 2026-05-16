@@ -6,12 +6,15 @@ import { join, resolve } from "node:path";
 import { loadProfile } from "./profile.js";
 import { analyzeProject } from "../analyzers/project.js";
 import { generatePrompt, type GenerateOptions } from "../generators/prompt.js";
+import { canDispatch, dispatchToAgent, getDispatchInstructions } from "../utils/dispatch.js";
+import type { AgentId } from "../utils/agent-selector.js";
 
 export const generateCommand = new Command("generate")
-  .description("Generate a slimmed-down initialization prompt for a specific agent")
+  .description("Generate a slimmed-down initialization prompt and optionally dispatch to agent")
   .option("-a, --agent <agent>", "Target agent (claude-code, cursor, copilot, etc.)")
-  .option("-o, --output <file>", "Output file (default: stdout)")
-  .option("--clipboard", "Copy to clipboard instead of printing")
+  .option("-o, --output <file>", "Output file (default: dispatch to agent)")
+  .option("--clipboard", "Copy to clipboard instead of dispatching")
+  .option("--no-dispatch", "Print to stdout instead of launching agent")
   .option("--spec <path>", "Path to agentic-system-initializer.md")
   .action(async (options) => {
     p.intro(chalk.bgCyan(" agentinit generate "));
@@ -88,6 +91,23 @@ export const generateCommand = new Command("generate")
         p.log.warn("Clipboard copy failed. Printing to stdout instead.");
         console.log(result);
       }
+    } else if (options.dispatch !== false && canDispatch(agent as AgentId)) {
+      // Direct dispatch to agent CLI
+      const dispatchResult = await dispatchToAgent(agent as AgentId, result, targetDir);
+      if (dispatchResult.success) {
+        p.log.success(dispatchResult.message);
+      } else {
+        p.log.warn(dispatchResult.message);
+      }
+    } else if (options.dispatch !== false) {
+      // IDE agent — show instructions
+      const { mkdirSync } = await import("node:fs");
+      const tmpDir = join(targetDir, ".agents", ".tmp");
+      if (!existsSync(tmpDir)) mkdirSync(tmpDir, { recursive: true });
+      const outFile = join(tmpDir, `${agent}-init-prompt.md`);
+      writeFileSync(outFile, result);
+      const instruction = getDispatchInstructions(agent as AgentId, outFile);
+      p.log.info(`${chalk.dim("→")} ${instruction}`);
     } else {
       console.log(result);
     }

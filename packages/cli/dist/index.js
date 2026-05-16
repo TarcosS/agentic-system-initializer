@@ -4,9 +4,11 @@
 import { Command as Command5 } from "commander";
 
 // src/commands/init.ts
-import { Command as Command3 } from "commander";
+import { Command as Command2 } from "commander";
 import * as p4 from "@clack/prompts";
 import chalk3 from "chalk";
+import { existsSync as existsSync4 } from "fs";
+import { join as join4 } from "path";
 
 // src/analyzers/project.ts
 import { existsSync, readFileSync } from "fs";
@@ -332,477 +334,11 @@ async function selectAgents() {
   return selected;
 }
 
-// src/generators/scaffold.ts
-import { existsSync as existsSync4, mkdirSync, writeFileSync as writeFileSync2 } from "fs";
-import { join as join4, dirname as dirname2 } from "path";
-
-// src/utils/template-engine.ts
-import { readFileSync as readFileSync3, existsSync as existsSync3 } from "fs";
-import { join as join3, dirname } from "path";
-import { fileURLToPath } from "url";
-var __filename = fileURLToPath(import.meta.url);
-var __dirname = dirname(__filename);
-function getTemplatesDir() {
-  const srcTemplates = join3(__dirname, "..", "templates");
-  if (existsSync3(srcTemplates)) return srcTemplates;
-  const pkgTemplates = join3(__dirname, "..", "src", "templates");
-  if (existsSync3(pkgTemplates)) return pkgTemplates;
-  return join3(process.cwd(), "node_modules", "@deopca", "agentinit", "templates");
-}
-function loadTemplate(category, name) {
-  const dir = getTemplatesDir();
-  const filePath = join3(dir, category, name);
-  if (existsSync3(filePath)) {
-    return readFileSync3(filePath, "utf-8");
-  }
-  for (const ext of [".md", ".mdc"]) {
-    const withExt = join3(dir, category, name + ext);
-    if (existsSync3(withExt)) return readFileSync3(withExt, "utf-8");
-  }
-  return null;
-}
-function fillTemplate(template, vars) {
-  let result = template;
-  for (const [key, value] of Object.entries(vars)) {
-    result = result.replaceAll(`{{${key}}}`, value);
-  }
-  return result;
-}
-function buildTemplateVars(profile, analysis) {
-  return {
-    profile: profileToMarkdown(profile),
-    role: profile.role,
-    domain: profile.domain,
-    expertise: profile.expertise.join(", ") || "not specified",
-    workingStyle: profile.workingStyle,
-    autonomy: profile.autonomy,
-    reviewStrictness: profile.reviewStrictness,
-    securityStance: profile.securityStance,
-    communication: profile.communication,
-    preferences: profile.preferences.length > 0 ? profile.preferences.map((p6) => `- ${p6}`).join("\n") : "- (none yet)",
-    projectName: analysis.name,
-    languages: analysis.languages.join(", ") || "unknown",
-    frameworks: analysis.frameworks.join(", ") || "standard tooling",
-    packageManager: analysis.packageManager,
-    monorepo: analysis.monorepo ? "yes" : "no",
-    testFramework: analysis.testFramework.join(", ") || "TBD",
-    testCommand: guessTestCommand(analysis),
-    lintCommand: guessLintCommand(analysis),
-    ciPlatform: analysis.ci.join(", ") || "none",
-    deployTarget: analysis.deployTarget.join(", ") || "TBD",
-    lockFile: guessLockFile(analysis),
-    // Placeholders for user-filled content
-    description: "{{description}}",
-    architectureNotes: "{{architectureNotes}}",
-    languageVersions: "{{languageVersions}}",
-    keyDependencies: "{{keyDependencies}}",
-    formatter: "{{formatter}}",
-    linter: "{{linter}}",
-    namingConventions: "{{namingConventions}}",
-    architecturePattern: "{{architecturePattern}}",
-    directoryStructure: "{{directoryStructure}}",
-    boundaries: "{{boundaries}}",
-    codingStandard1: "{{codingStandard1}}",
-    codingStandard2: "{{codingStandard2}}",
-    codingStandard3: "{{codingStandard3}}",
-    errorHandlingPattern: "{{errorHandlingPattern}}",
-    loggingPattern: "{{loggingPattern}}",
-    testStructure: "{{testStructure}}",
-    coverageTarget: "{{coverageTarget}}",
-    dispatchSignals: analysis.signals.map((s) => `- ${s}`).join("\n") || "- (auto-detected)",
-    branchStrategy: "{{branchStrategy}}",
-    commitStyle: "{{commitStyle}}",
-    prProcess: "{{prProcess}}",
-    commitFormat: "type(scope): description",
-    deployCommand: "{{deployCommand}}",
-    pipelineStages: "{{pipelineStages}}",
-    envVarsNote: "{{envVarsNote}}",
-    additionalSecurityRules: "{{additionalSecurityRules}}",
-    documentationStyle: "{{documentationStyle}}",
-    performanceAreas: "{{performanceAreas}}",
-    domainContext: "{{domainContext}}",
-    knownIssues: "{{knownIssues}}",
-    upcomingWork: "{{upcomingWork}}"
-  };
-}
-function guessTestCommand(analysis) {
-  if (analysis.testFramework.includes("Vitest")) return `${analysis.packageManager} run test`;
-  if (analysis.testFramework.includes("Jest")) return `${analysis.packageManager} run test`;
-  if (analysis.testFramework.includes("pytest")) return "pytest";
-  if (analysis.packageManager === "cargo") return "cargo test";
-  if (analysis.packageManager === "go") return "go test ./...";
-  return `${analysis.packageManager !== "unknown" ? analysis.packageManager : "npm"} run test`;
-}
-function guessLintCommand(analysis) {
-  if (["npm", "yarn", "pnpm", "bun"].includes(analysis.packageManager)) {
-    return `${analysis.packageManager} run lint`;
-  }
-  if (analysis.packageManager === "cargo") return "cargo clippy";
-  if (analysis.packageManager === "go") return "golangci-lint run";
-  return "npm run lint";
-}
-function guessLockFile(analysis) {
-  const map = {
-    npm: "package-lock.json",
-    yarn: "yarn.lock",
-    pnpm: "pnpm-lock.yaml",
-    bun: "bun.lockb",
-    pip: "requirements.txt",
-    poetry: "poetry.lock",
-    cargo: "Cargo.lock",
-    go: "go.sum"
-  };
-  return map[analysis.packageManager] || "unknown";
-}
-
-// src/generators/scaffold.ts
-function writeScaffold(options) {
-  const { targetDir, agents, profile, analysis, overwrite = false } = options;
-  const result = { created: [], skipped: [], errors: [] };
-  const vars = buildTemplateVars(profile, analysis);
-  ensureDir(join4(targetDir, ".agents", "memory"));
-  ensureDir(join4(targetDir, ".agents", "instructions"));
-  writeIfMissing(
-    join4(targetDir, ".agents", "profile.json"),
-    JSON.stringify(profile, null, 2),
-    result,
-    overwrite
-  );
-  const decisionsContent = buildDecisionsMd(analysis);
-  writeIfMissing(
-    join4(targetDir, ".agents", "memory", "decisions.md"),
-    decisionsContent,
-    result,
-    overwrite
-  );
-  const sharedInstructions = buildSharedInstructions(profile, analysis);
-  writeIfMissing(
-    join4(targetDir, ".agents", "instructions", "shared.md"),
-    sharedInstructions,
-    result,
-    overwrite
-  );
-  for (const agent of agents) {
-    try {
-      scaffoldAgent(targetDir, agent, vars, result, overwrite);
-    } catch (err) {
-      result.errors.push(`Failed to scaffold ${agent}: ${err}`);
-    }
-  }
-  return result;
-}
-var AGENT_FILE_MAP = {
-  "claude-code": { path: "CLAUDE.md", templateName: "claude-code.md" },
-  cursor: { path: ".cursor/rules/00-core.mdc", templateName: "cursor.mdc" },
-  codex: { path: "AGENTS.md", templateName: "codex.md" },
-  copilot: { path: ".github/copilot-instructions.md", templateName: "copilot.md" },
-  "gemini-cli": { path: "GEMINI.md", templateName: "gemini-cli.md" },
-  cline: { path: ".clinerules/00-core.md", templateName: "cline.md" },
-  windsurf: { path: ".windsurf/rules/general.md", templateName: "windsurf.md" },
-  "roo-code": { path: ".roo/rules/00-core.md", templateName: "roo-code.md" },
-  "kilo-code": { path: ".kilocode/rules/00-core.md", templateName: "kilo-code.md" },
-  aider: { path: ".aider/instructions.md", templateName: "generic.md" },
-  generic: { path: ".agents/instructions/agent.md", templateName: "generic.md" }
-};
-function scaffoldAgent(targetDir, agent, vars, result, overwrite) {
-  const mapping = AGENT_FILE_MAP[agent];
-  if (!mapping) return;
-  const template = loadTemplate("agents", mapping.templateName);
-  if (!template) {
-    const fallbackContent = [
-      vars.profile,
-      "",
-      "## Project context",
-      "",
-      `This is a ${vars.languages} project using ${vars.frameworks}.`,
-      "",
-      "## Rules",
-      "",
-      "- Read .agents/memory/decisions.md before making architectural choices",
-      "- Follow existing patterns in the codebase",
-      "- Run tests before committing"
-    ].join("\n");
-    const filePath2 = join4(targetDir, mapping.path);
-    writeIfMissing(filePath2, fallbackContent, result, overwrite);
-    return;
-  }
-  const content = fillTemplate(template, vars);
-  const filePath = join4(targetDir, mapping.path);
-  writeIfMissing(filePath, content, result, overwrite);
-}
-function buildDecisionsMd(analysis) {
-  return [
-    "# Project Decisions",
-    "",
-    `> Initialized by agentinit | Stack: ${[...analysis.languages, ...analysis.frameworks].join(", ")}`,
-    "",
-    "## Architecture Decisions",
-    "",
-    "Record significant technical decisions here. All AI agents read this file.",
-    "",
-    "| Date | Decision | Rationale |",
-    "|------|----------|-----------|",
-    "| (auto) | Initial scaffold created | Project initialized with agentinit |",
-    "",
-    "## Conventions",
-    "",
-    "- (Add project-specific conventions here)",
-    "",
-    "## Boundaries",
-    "",
-    "- (Define what agents should NOT do)"
-  ].join("\n");
-}
-function buildSharedInstructions(profile, analysis) {
-  return [
-    "# Shared Agent Instructions",
-    "",
-    "This file is read by all AI agents working on this project.",
-    "",
-    profileToMarkdown(profile),
-    "",
-    "## Project Stack",
-    "",
-    `- Languages: ${analysis.languages.join(", ") || "TBD"}`,
-    `- Frameworks: ${analysis.frameworks.join(", ") || "TBD"}`,
-    `- Package manager: ${analysis.packageManager}`,
-    `- Tests: ${analysis.testFramework.join(", ") || "TBD"}`,
-    `- CI: ${analysis.ci.join(", ") || "none"}`,
-    "",
-    "## Shared Rules",
-    "",
-    "1. Read .agents/memory/decisions.md before architectural changes",
-    "2. Follow existing code patterns",
-    "3. Run tests before completing tasks",
-    "4. Update decisions.md when making significant choices"
-  ].join("\n");
-}
-function ensureDir(dir) {
-  if (!existsSync4(dir)) {
-    mkdirSync(dir, { recursive: true });
-  }
-}
-function writeIfMissing(filePath, content, result, overwrite) {
-  ensureDir(dirname2(filePath));
-  if (existsSync4(filePath) && !overwrite) {
-    result.skipped.push(filePath);
-    return;
-  }
-  try {
-    writeFileSync2(filePath, content);
-    result.created.push(filePath);
-  } catch (err) {
-    result.errors.push(`${filePath}: ${err}`);
-  }
-}
-
-// src/commands/validate.ts
-import { Command as Command2 } from "commander";
-import * as p3 from "@clack/prompts";
-import chalk2 from "chalk";
-import { existsSync as existsSync5, readFileSync as readFileSync4 } from "fs";
-import { join as join5 } from "path";
-import fg2 from "fast-glob";
-var AGENT_PATHS = {
-  "claude-code": ["CLAUDE.md", ".claude/settings.json", ".claude/mcp.json"],
-  cursor: [".cursor/rules/00-core.mdc", ".cursor/mcp.json"],
-  codex: ["AGENTS.md", ".codex/skills/context-hygiene/SKILL.md"],
-  copilot: [".github/copilot-instructions.md"],
-  "gemini-cli": ["GEMINI.md"],
-  cline: [".clinerules/00-core.md"],
-  windsurf: [".windsurf/rules/general.md"],
-  "roo-code": [".roomodes", ".roo/rules/00-core.md"],
-  "kilo-code": [".kilocode/rules/00-core.md"]
-};
-async function validate(targetDir, agents) {
-  const issues = [];
-  let passed = 0;
-  let total = 0;
-  const sharedFiles = ["AGENTS.md", "how-to-use-skills.sh"];
-  for (const file of sharedFiles) {
-    total++;
-    if (existsSync5(join5(targetDir, file))) {
-      passed++;
-    } else {
-      issues.push(`Missing shared file: ${file}`);
-    }
-  }
-  const detectedAgents = agents ?? detectAgents(targetDir);
-  for (const agent of detectedAgents) {
-    const paths = AGENT_PATHS[agent];
-    if (!paths) continue;
-    for (const filePath of paths) {
-      total++;
-      if (existsSync5(join5(targetDir, filePath))) {
-        passed++;
-      } else {
-        issues.push(`Missing ${agent} file: ${filePath}`);
-      }
-    }
-  }
-  const mdFiles = await fg2(["**/*.md", "**/*.mdc"], {
-    cwd: targetDir,
-    ignore: ["node_modules/**", ".git/**"],
-    absolute: true
-  });
-  for (const file of mdFiles) {
-    const content = readFileSync4(file, "utf-8");
-    const placeholders = content.match(/<[a-z][a-z\s\-]*>/g);
-    if (placeholders && placeholders.length > 0) {
-      const relativePath = file.replace(targetDir + "/", "");
-      const unique = [...new Set(placeholders)].slice(0, 3);
-      issues.push(
-        `Unfilled placeholder(s) in ${relativePath}: ${unique.join(", ")}${placeholders.length > 3 ? ` (+${placeholders.length - 3} more)` : ""}`
-      );
-    }
-  }
-  total++;
-  if (existsSync5(join5(targetDir, "skills-lock.json"))) {
-    passed++;
-  } else {
-    issues.push("skills-lock.json not found (run npx skills to generate)");
-  }
-  const memoryPaths = [
-    ".agents/memory/decisions.md",
-    ".claude/memory/decisions.md",
-    ".codex/memory/decisions.md",
-    ".clinerules/memory/decisions.md",
-    ".windsurf/memory/decisions.md",
-    ".roo/memory/decisions.md",
-    ".gemini/memory/decisions.md"
-  ];
-  total++;
-  const hasMemory = memoryPaths.some((p6) => existsSync5(join5(targetDir, p6)));
-  if (hasMemory) {
-    passed++;
-  } else {
-    issues.push("No decisions.md found in any memory path");
-  }
-  return { issues, passed, total };
-}
-function detectAgents(targetDir) {
-  const detected = [];
-  if (existsSync5(join5(targetDir, ".claude"))) detected.push("claude-code");
-  if (existsSync5(join5(targetDir, ".cursor"))) detected.push("cursor");
-  if (existsSync5(join5(targetDir, ".codex"))) detected.push("codex");
-  if (existsSync5(join5(targetDir, ".github", "copilot-instructions.md")))
-    detected.push("copilot");
-  if (existsSync5(join5(targetDir, "GEMINI.md"))) detected.push("gemini-cli");
-  if (existsSync5(join5(targetDir, ".clinerules"))) detected.push("cline");
-  if (existsSync5(join5(targetDir, ".windsurf"))) detected.push("windsurf");
-  if (existsSync5(join5(targetDir, ".roo"))) detected.push("roo-code");
-  if (existsSync5(join5(targetDir, ".kilocode"))) detected.push("kilo-code");
-  return detected;
-}
-var validateCommand = new Command2("validate").description("Health-check: verify scaffold integrity, find unfilled placeholders").argument("[directory]", "Target directory", ".").action(async (directory) => {
-  p3.intro(chalk2.bgCyan(" agentinit validate "));
-  const targetDir = directory === "." ? process.cwd() : directory;
-  const agents = detectAgents(targetDir);
-  if (agents.length === 0) {
-    p3.log.warn("No agent scaffold detected. Run `agentinit init` first.");
-    p3.outro("");
-    return;
-  }
-  p3.log.info(`Detected agents: ${agents.join(", ")}`);
-  const result = await validate(targetDir, agents);
-  if (result.issues.length === 0) {
-    p3.log.success(`All checks passed (${result.passed}/${result.total}) \u2713`);
-  } else {
-    p3.log.warn(`${result.issues.length} issue(s) found:`);
-    for (const issue of result.issues) {
-      p3.log.message(`  ${chalk2.yellow("!")} ${issue}`);
-    }
-    p3.log.info(`Passed: ${result.passed}/${result.total}`);
-  }
-  p3.outro("");
-});
-
-// src/commands/init.ts
-var initCommand = new Command3("init").description("Initialize agent configuration: profile + agent selection + scaffold").argument("[directory]", "Target directory", ".").option("--agent <agents...>", "Pre-select agent(s) to skip interactive selection").option("--skip-profile", "Use default profile (senior, high autonomy)").option("--dry-run", "Show what would be created without writing files").action(async (directory, options) => {
-  p4.intro(chalk3.bgCyan(" agentinit "));
-  const targetDir = directory === "." ? process.cwd() : directory;
-  p4.log.step("Step 0: Analyzing project...");
-  const analysis = await analyzeProject(targetDir);
-  p4.log.success(
-    `Detected: ${analysis.languages.join(", ") || "unknown"} / ${analysis.frameworks.join(", ") || "no framework"} / ${analysis.packageManager}`
-  );
-  let profile;
-  if (options.skipProfile) {
-    profile = getDefaultProfile();
-    p4.log.info("Using default profile (senior, high autonomy, balanced strictness)");
-  } else {
-    p4.log.step("Step 0b: Building your developer profile...");
-    profile = await collectProfile();
-  }
-  let agents;
-  if (options.agent) {
-    agents = options.agent;
-  } else {
-    agents = await selectAgents();
-  }
-  p4.log.success(`Selected agent(s): ${agents.join(", ")}`);
-  if (options.dryRun) {
-    p4.log.info("Dry run \u2014 would scaffold for: " + agents.join(", "));
-    p4.outro("Dry run complete. No files written.");
-    return;
-  }
-  p4.log.step("Writing scaffold files...");
-  const result = writeScaffold({ targetDir, agents, profile, analysis });
-  p4.log.success(`Created ${result.created.length} files`);
-  if (result.skipped.length > 0) {
-    p4.log.info(`Skipped ${result.skipped.length} existing files`);
-  }
-  p4.log.step("Validating scaffold...");
-  const validation = await validate(targetDir, agents.map(String));
-  if (validation.issues.length === 0) {
-    p4.log.success("Validation passed \u2713");
-  } else {
-    p4.log.warn(`Validation: ${validation.issues.length} issue(s) found`);
-    for (const issue of validation.issues) {
-      p4.log.message(`  ${chalk3.yellow("!")} ${issue}`);
-    }
-  }
-  p4.note(
-    [
-      `Agent(s): ${agents.join(", ")}`,
-      `Profile: ${profile.role} / ${profile.domain} / autonomy=${profile.autonomy}`,
-      `Files created: ${result.created.length}`,
-      "",
-      "Next steps:",
-      "  1. Feed the generated prompt to your agent (use `agentinit generate`)",
-      "  2. Run: npx skills add vercel-labs/skills --skill find-skills -y",
-      "  3. Run: agentinit validate"
-    ].join("\n"),
-    "Initialization complete"
-  );
-  p4.outro("Done! Run `agentinit validate` anytime to health-check your scaffold.");
-});
-function getDefaultProfile() {
-  return {
-    role: "senior",
-    domain: "fullstack",
-    expertise: [],
-    workingStyle: "mixed",
-    autonomy: "high",
-    reviewStrictness: "balanced",
-    securityStance: "standard",
-    communication: "concise",
-    preferences: []
-  };
-}
-
-// src/commands/generate.ts
-import { Command as Command4 } from "commander";
-import * as p5 from "@clack/prompts";
-import chalk4 from "chalk";
-import { writeFileSync as writeFileSync3, existsSync as existsSync6 } from "fs";
-import { join as join6, resolve } from "path";
-
 // src/generators/prompt.ts
-import { readFileSync as readFileSync5 } from "fs";
+import { readFileSync as readFileSync3 } from "fs";
 function generatePrompt(options) {
   const { specPath, agent, profile, analysis } = options;
-  const spec = readFileSync5(specPath, "utf-8");
+  const spec = readFileSync3(specPath, "utf-8");
   const lines = spec.split("\n");
   const sections = [];
   sections.push(buildHeader(agent, analysis));
@@ -910,27 +446,412 @@ function buildAnalysisSummary(analysis) {
   return lines.join("\n");
 }
 
-// src/commands/generate.ts
-var generateCommand = new Command4("generate").description("Generate a slimmed-down initialization prompt for a specific agent").option("-a, --agent <agent>", "Target agent (claude-code, cursor, copilot, etc.)").option("-o, --output <file>", "Output file (default: stdout)").option("--clipboard", "Copy to clipboard instead of printing").option("--spec <path>", "Path to agentic-system-initializer.md").action(async (options) => {
-  p5.intro(chalk4.bgCyan(" agentinit generate "));
-  const targetDir = process.cwd();
-  const profile = loadProfile(targetDir);
-  if (!profile) {
-    p5.log.warn("No profile found. Run `agentinit init` first (or `agentinit profile`).");
+// src/utils/dispatch.ts
+import { execSync, spawn } from "child_process";
+import { writeFileSync as writeFileSync2, mkdirSync, existsSync as existsSync3 } from "fs";
+import { join as join3 } from "path";
+import * as p3 from "@clack/prompts";
+import chalk2 from "chalk";
+var DISPATCH_MAP = {
+  "claude-code": {
+    command: "claude",
+    args: (promptFile, _cwd) => ["-p", `@${promptFile}`, "--verbose"],
+    needsFile: true,
+    checkBinary: "claude"
+  },
+  codex: {
+    command: "codex",
+    args: (promptFile, _cwd) => ["--prompt-file", promptFile],
+    needsFile: true,
+    checkBinary: "codex"
+  },
+  "gemini-cli": {
+    command: "gemini",
+    args: (promptFile, _cwd) => ["-p", `@${promptFile}`],
+    needsFile: true,
+    checkBinary: "gemini"
+  },
+  aider: {
+    command: "aider",
+    args: (promptFile, _cwd) => ["--message-file", promptFile],
+    needsFile: true,
+    checkBinary: "aider"
+  },
+  copilot: {
+    command: "gh",
+    args: (promptFile, _cwd) => ["copilot", "suggest", "-f", promptFile],
+    needsFile: true,
+    checkBinary: "gh"
+  }
+};
+var IDE_AGENTS = ["cursor", "windsurf", "roo-code", "kilo-code", "cline"];
+function canDispatch(agent) {
+  return agent in DISPATCH_MAP;
+}
+function isIdeAgent(agent) {
+  return IDE_AGENTS.includes(agent);
+}
+function isBinaryAvailable(binary) {
+  try {
+    execSync(`which ${binary}`, { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+async function dispatchToAgent(agent, prompt, cwd) {
+  const config = DISPATCH_MAP[agent];
+  if (!config) {
+    return writePromptFile(agent, prompt, cwd);
+  }
+  if (!isBinaryAvailable(config.checkBinary)) {
+    p3.log.warn(
+      `${config.checkBinary} not found in PATH. Falling back to file output.`
+    );
+    return writePromptFile(agent, prompt, cwd);
+  }
+  const confirm2 = await p3.confirm({
+    message: `Ready to send prompt to ${chalk2.bold(agent)} via \`${config.command}\`. Proceed?`
+  });
+  if (p3.isCancel(confirm2) || !confirm2) {
+    return writePromptFile(agent, prompt, cwd);
+  }
+  const promptFile = writePromptToTempFile(prompt, cwd);
+  const args = config.args(promptFile, cwd);
+  p3.log.info(`Running: ${config.command} ${args.join(" ")}`);
+  return new Promise((resolve2) => {
+    const child = spawn(config.command, args, {
+      cwd,
+      stdio: "inherit",
+      env: { ...process.env }
+    });
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolve2({
+          success: true,
+          method: "cli",
+          message: `${agent} completed successfully`
+        });
+      } else {
+        resolve2({
+          success: false,
+          method: "cli",
+          message: `${agent} exited with code ${code}`
+        });
+      }
+    });
+    child.on("error", (err) => {
+      resolve2({
+        success: false,
+        method: "cli",
+        message: `Failed to launch ${config.command}: ${err.message}`
+      });
+    });
+  });
+}
+function writePromptToTempFile(prompt, cwd) {
+  const dir = join3(cwd, ".agents", ".tmp");
+  if (!existsSync3(dir)) mkdirSync(dir, { recursive: true });
+  const filePath = join3(dir, "init-prompt.md");
+  writeFileSync2(filePath, prompt);
+  return filePath;
+}
+function writePromptFile(agent, prompt, cwd) {
+  const dir = join3(cwd, ".agents", ".tmp");
+  if (!existsSync3(dir)) mkdirSync(dir, { recursive: true });
+  const filePath = join3(dir, `${agent}-init-prompt.md`);
+  writeFileSync2(filePath, prompt);
+  return {
+    success: true,
+    method: "file",
+    message: `Prompt written to ${filePath}. Feed this file to your agent manually.`
+  };
+}
+function getDispatchInstructions(agent, promptFile) {
+  const config = DISPATCH_MAP[agent];
+  if (config) {
+    const args = config.args(promptFile, ".");
+    return `${config.command} ${args.join(" ")}`;
+  }
+  switch (agent) {
+    case "cursor":
+      return `Open Cursor \u2192 Cmd+I \u2192 paste or reference ${promptFile}`;
+    case "windsurf":
+      return `Open Windsurf \u2192 Cascade \u2192 reference ${promptFile}`;
+    case "cline":
+      return `Open VS Code \u2192 Cline sidebar \u2192 paste from ${promptFile}`;
+    case "roo-code":
+      return `Open VS Code \u2192 Roo Code \u2192 paste from ${promptFile}`;
+    case "kilo-code":
+      return `Open VS Code \u2192 Kilo Code \u2192 paste from ${promptFile}`;
+    default:
+      return `Feed ${promptFile} to your agent`;
+  }
+}
+
+// src/commands/init.ts
+var initCommand = new Command2("init").description("Analyze project, build profile, generate prompt, and dispatch to agent").argument("[directory]", "Target directory", ".").option("--agent <agents...>", "Pre-select agent(s) to skip interactive selection").option("--skip-profile", "Use default profile (senior, high autonomy)").option("--no-dispatch", "Generate prompt file only, don't launch agent").option("--spec <path>", "Path to agentic-system-initializer.md").action(async (directory, options) => {
+  p4.intro(chalk3.bgCyan(" agentinit "));
+  const targetDir = directory === "." ? process.cwd() : directory;
+  p4.log.step("Step 0: Analyzing project...");
+  const analysis = await analyzeProject(targetDir);
+  p4.log.success(
+    `Detected: ${analysis.languages.join(", ") || "unknown"} / ${analysis.frameworks.join(", ") || "no framework"} / ${analysis.packageManager}`
+  );
+  let profile;
+  if (options.skipProfile) {
+    profile = getDefaultProfile();
+    p4.log.info("Using default profile (senior, high autonomy, balanced strictness)");
+  } else {
+    p4.log.step("Step 0b: Building your developer profile...");
+    profile = await collectProfile();
+  }
+  const agentsDir = join4(targetDir, ".agents");
+  if (!existsSync4(agentsDir)) {
+    const { mkdirSync: mkdirSync2 } = await import("fs");
+    mkdirSync2(agentsDir, { recursive: true });
+  }
+  saveProfile(targetDir, profile);
+  let agents;
+  if (options.agent) {
+    agents = options.agent;
+  } else {
+    agents = await selectAgents();
+  }
+  p4.log.success(`Selected agent(s): ${agents.join(", ")}`);
+  const specPath = options.spec ?? findSpecFile(targetDir);
+  if (!specPath || !existsSync4(specPath)) {
+    p4.log.error(
+      "Cannot find agentic-system-initializer.md. Use --spec to provide path."
+    );
+    p4.outro("");
+    return;
+  }
+  for (const agent of agents) {
+    p4.log.step(`Generating prompt for ${chalk3.bold(agent)}...`);
+    const prompt = generatePrompt({
+      specPath,
+      agent,
+      profile,
+      analysis
+    });
+    p4.log.success(`Prompt ready (${prompt.split("\n").length} lines)`);
+    if (options.dispatch === false) {
+      const { writeFileSync: writeFileSync4, mkdirSync: mkdirSync2 } = await import("fs");
+      const tmpDir = join4(targetDir, ".agents", ".tmp");
+      if (!existsSync4(tmpDir)) mkdirSync2(tmpDir, { recursive: true });
+      const outFile = join4(tmpDir, `${agent}-init-prompt.md`);
+      writeFileSync4(outFile, prompt);
+      p4.log.info(`Written to: ${outFile}`);
+      continue;
+    }
+    if (canDispatch(agent)) {
+      const result = await dispatchToAgent(agent, prompt, targetDir);
+      if (result.success && result.method === "cli") {
+        p4.log.success(result.message);
+      } else if (result.method === "file") {
+        p4.log.info(result.message);
+      } else {
+        p4.log.warn(result.message);
+      }
+    } else if (isIdeAgent(agent)) {
+      const { writeFileSync: writeFileSync4, mkdirSync: mkdirSync2 } = await import("fs");
+      const tmpDir = join4(targetDir, ".agents", ".tmp");
+      if (!existsSync4(tmpDir)) mkdirSync2(tmpDir, { recursive: true });
+      const outFile = join4(tmpDir, `${agent}-init-prompt.md`);
+      writeFileSync4(outFile, prompt);
+      const instruction = getDispatchInstructions(agent, outFile);
+      p4.log.info(`${chalk3.dim("\u2192")} ${instruction}`);
+    }
+  }
+  p4.note(
+    [
+      `Agent(s): ${agents.join(", ")}`,
+      `Profile: ${profile.role} / ${profile.domain} / autonomy=${profile.autonomy}`,
+      `Spec: ${specPath}`,
+      "",
+      "The agent will now:",
+      "  1. Read your project structure",
+      "  2. Install relevant skills (npx skills add ...)",
+      "  3. Generate config files + custom agents",
+      "  4. Write decisions.md and scaffold"
+    ].join("\n"),
+    "Dispatched"
+  );
+  p4.outro("Run `agentinit validate` after the agent finishes to verify the scaffold.");
+});
+function findSpecFile(startDir) {
+  let dir = startDir;
+  for (let i = 0; i < 5; i++) {
+    const candidate = join4(dir, "agentic-system-initializer.md");
+    if (existsSync4(candidate)) return candidate;
+    const parent = join4(dir, "..");
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return null;
+}
+function getDefaultProfile() {
+  return {
+    role: "senior",
+    domain: "fullstack",
+    expertise: [],
+    workingStyle: "mixed",
+    autonomy: "high",
+    reviewStrictness: "balanced",
+    securityStance: "standard",
+    communication: "concise",
+    preferences: []
+  };
+}
+
+// src/commands/validate.ts
+import { Command as Command3 } from "commander";
+import * as p5 from "@clack/prompts";
+import chalk4 from "chalk";
+import { existsSync as existsSync5, readFileSync as readFileSync4 } from "fs";
+import { join as join5 } from "path";
+import fg2 from "fast-glob";
+var AGENT_PATHS = {
+  "claude-code": ["CLAUDE.md", ".claude/settings.json", ".claude/mcp.json"],
+  cursor: [".cursor/rules/00-core.mdc", ".cursor/mcp.json"],
+  codex: ["AGENTS.md", ".codex/skills/context-hygiene/SKILL.md"],
+  copilot: [".github/copilot-instructions.md"],
+  "gemini-cli": ["GEMINI.md"],
+  cline: [".clinerules/00-core.md"],
+  windsurf: [".windsurf/rules/general.md"],
+  "roo-code": [".roomodes", ".roo/rules/00-core.md"],
+  "kilo-code": [".kilocode/rules/00-core.md"]
+};
+async function validate(targetDir, agents) {
+  const issues = [];
+  let passed = 0;
+  let total = 0;
+  const sharedFiles = ["AGENTS.md", "how-to-use-skills.sh"];
+  for (const file of sharedFiles) {
+    total++;
+    if (existsSync5(join5(targetDir, file))) {
+      passed++;
+    } else {
+      issues.push(`Missing shared file: ${file}`);
+    }
+  }
+  const detectedAgents = agents ?? detectAgents(targetDir);
+  for (const agent of detectedAgents) {
+    const paths = AGENT_PATHS[agent];
+    if (!paths) continue;
+    for (const filePath of paths) {
+      total++;
+      if (existsSync5(join5(targetDir, filePath))) {
+        passed++;
+      } else {
+        issues.push(`Missing ${agent} file: ${filePath}`);
+      }
+    }
+  }
+  const mdFiles = await fg2(["**/*.md", "**/*.mdc"], {
+    cwd: targetDir,
+    ignore: ["node_modules/**", ".git/**"],
+    absolute: true
+  });
+  for (const file of mdFiles) {
+    const content = readFileSync4(file, "utf-8");
+    const placeholders = content.match(/<[a-z][a-z\s\-]*>/g);
+    if (placeholders && placeholders.length > 0) {
+      const relativePath = file.replace(targetDir + "/", "");
+      const unique = [...new Set(placeholders)].slice(0, 3);
+      issues.push(
+        `Unfilled placeholder(s) in ${relativePath}: ${unique.join(", ")}${placeholders.length > 3 ? ` (+${placeholders.length - 3} more)` : ""}`
+      );
+    }
+  }
+  total++;
+  if (existsSync5(join5(targetDir, "skills-lock.json"))) {
+    passed++;
+  } else {
+    issues.push("skills-lock.json not found (run npx skills to generate)");
+  }
+  const memoryPaths = [
+    ".agents/memory/decisions.md",
+    ".claude/memory/decisions.md",
+    ".codex/memory/decisions.md",
+    ".clinerules/memory/decisions.md",
+    ".windsurf/memory/decisions.md",
+    ".roo/memory/decisions.md",
+    ".gemini/memory/decisions.md"
+  ];
+  total++;
+  const hasMemory = memoryPaths.some((p7) => existsSync5(join5(targetDir, p7)));
+  if (hasMemory) {
+    passed++;
+  } else {
+    issues.push("No decisions.md found in any memory path");
+  }
+  return { issues, passed, total };
+}
+function detectAgents(targetDir) {
+  const detected = [];
+  if (existsSync5(join5(targetDir, ".claude"))) detected.push("claude-code");
+  if (existsSync5(join5(targetDir, ".cursor"))) detected.push("cursor");
+  if (existsSync5(join5(targetDir, ".codex"))) detected.push("codex");
+  if (existsSync5(join5(targetDir, ".github", "copilot-instructions.md")))
+    detected.push("copilot");
+  if (existsSync5(join5(targetDir, "GEMINI.md"))) detected.push("gemini-cli");
+  if (existsSync5(join5(targetDir, ".clinerules"))) detected.push("cline");
+  if (existsSync5(join5(targetDir, ".windsurf"))) detected.push("windsurf");
+  if (existsSync5(join5(targetDir, ".roo"))) detected.push("roo-code");
+  if (existsSync5(join5(targetDir, ".kilocode"))) detected.push("kilo-code");
+  return detected;
+}
+var validateCommand = new Command3("validate").description("Health-check: verify scaffold integrity, find unfilled placeholders").argument("[directory]", "Target directory", ".").action(async (directory) => {
+  p5.intro(chalk4.bgCyan(" agentinit validate "));
+  const targetDir = directory === "." ? process.cwd() : directory;
+  const agents = detectAgents(targetDir);
+  if (agents.length === 0) {
+    p5.log.warn("No agent scaffold detected. Run `agentinit init` first.");
     p5.outro("");
     return;
   }
-  const specPath = options.spec ?? findSpecFile(targetDir);
+  p5.log.info(`Detected agents: ${agents.join(", ")}`);
+  const result = await validate(targetDir, agents);
+  if (result.issues.length === 0) {
+    p5.log.success(`All checks passed (${result.passed}/${result.total}) \u2713`);
+  } else {
+    p5.log.warn(`${result.issues.length} issue(s) found:`);
+    for (const issue of result.issues) {
+      p5.log.message(`  ${chalk4.yellow("!")} ${issue}`);
+    }
+    p5.log.info(`Passed: ${result.passed}/${result.total}`);
+  }
+  p5.outro("");
+});
+
+// src/commands/generate.ts
+import { Command as Command4 } from "commander";
+import * as p6 from "@clack/prompts";
+import chalk5 from "chalk";
+import { writeFileSync as writeFileSync3, existsSync as existsSync6 } from "fs";
+import { join as join6, resolve } from "path";
+var generateCommand = new Command4("generate").description("Generate a slimmed-down initialization prompt and optionally dispatch to agent").option("-a, --agent <agent>", "Target agent (claude-code, cursor, copilot, etc.)").option("-o, --output <file>", "Output file (default: dispatch to agent)").option("--clipboard", "Copy to clipboard instead of dispatching").option("--no-dispatch", "Print to stdout instead of launching agent").option("--spec <path>", "Path to agentic-system-initializer.md").action(async (options) => {
+  p6.intro(chalk5.bgCyan(" agentinit generate "));
+  const targetDir = process.cwd();
+  const profile = loadProfile(targetDir);
+  if (!profile) {
+    p6.log.warn("No profile found. Run `agentinit init` first (or `agentinit profile`).");
+    p6.outro("");
+    return;
+  }
+  const specPath = options.spec ?? findSpecFile2(targetDir);
   if (!specPath || !existsSync6(specPath)) {
-    p5.log.error(
+    p6.log.error(
       "Cannot find agentic-system-initializer.md. Use --spec to provide path."
     );
-    p5.outro("");
+    p6.outro("");
     return;
   }
   let agent = options.agent;
   if (!agent) {
-    const choice = await p5.select({
+    const choice = await p6.select({
       message: "Which agent should this prompt target?",
       options: [
         { value: "claude-code", label: "Claude Code" },
@@ -946,7 +867,7 @@ var generateCommand = new Command4("generate").description("Generate a slimmed-d
         { value: "generic", label: "Generic / Other" }
       ]
     });
-    if (p5.isCancel(choice)) process.exit(0);
+    if (p6.isCancel(choice)) process.exit(0);
     agent = choice;
   }
   const analysis = await analyzeProject(targetDir);
@@ -956,32 +877,47 @@ var generateCommand = new Command4("generate").description("Generate a slimmed-d
     profile,
     analysis
   };
-  const spinner2 = p5.spinner();
+  const spinner2 = p6.spinner();
   spinner2.start("Generating slimmed prompt...");
   const result = generatePrompt(genOptions);
   spinner2.stop("Prompt generated");
   if (options.output) {
     const outPath = resolve(options.output);
     writeFileSync3(outPath, result);
-    p5.log.success(`Written to ${outPath} (${result.length} chars)`);
+    p6.log.success(`Written to ${outPath} (${result.length} chars)`);
   } else if (options.clipboard) {
     try {
-      const { execSync } = await import("child_process");
+      const { execSync: execSync2 } = await import("child_process");
       const cmd = process.platform === "darwin" ? "pbcopy" : "xclip -selection clipboard";
-      execSync(cmd, { input: result });
-      p5.log.success("Copied to clipboard!");
+      execSync2(cmd, { input: result });
+      p6.log.success("Copied to clipboard!");
     } catch {
-      p5.log.warn("Clipboard copy failed. Printing to stdout instead.");
+      p6.log.warn("Clipboard copy failed. Printing to stdout instead.");
       console.log(result);
     }
+  } else if (options.dispatch !== false && canDispatch(agent)) {
+    const dispatchResult = await dispatchToAgent(agent, result, targetDir);
+    if (dispatchResult.success) {
+      p6.log.success(dispatchResult.message);
+    } else {
+      p6.log.warn(dispatchResult.message);
+    }
+  } else if (options.dispatch !== false) {
+    const { mkdirSync: mkdirSync2 } = await import("fs");
+    const tmpDir = join6(targetDir, ".agents", ".tmp");
+    if (!existsSync6(tmpDir)) mkdirSync2(tmpDir, { recursive: true });
+    const outFile = join6(tmpDir, `${agent}-init-prompt.md`);
+    writeFileSync3(outFile, result);
+    const instruction = getDispatchInstructions(agent, outFile);
+    p6.log.info(`${chalk5.dim("\u2192")} ${instruction}`);
   } else {
     console.log(result);
   }
-  p5.outro(
-    `${chalk4.dim(`Lines: ${result.split("\n").length} | Agent: ${agent}`)}`
+  p6.outro(
+    `${chalk5.dim(`Lines: ${result.split("\n").length} | Agent: ${agent}`)}`
   );
 });
-function findSpecFile(startDir) {
+function findSpecFile2(startDir) {
   let dir = startDir;
   for (let i = 0; i < 5; i++) {
     const candidate = join6(dir, "agentic-system-initializer.md");
