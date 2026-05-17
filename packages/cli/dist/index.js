@@ -474,7 +474,7 @@ function buildAnalysisSummary(analysis) {
 
 // src/utils/dispatch.ts
 import { execSync, spawn } from "child_process";
-import { writeFileSync as writeFileSync2, mkdirSync, existsSync as existsSync3, createReadStream } from "fs";
+import { writeFileSync as writeFileSync2, mkdirSync, existsSync as existsSync3, createReadStream, readFileSync as readFileSync4 } from "fs";
 import { join as join3 } from "path";
 import * as p3 from "@clack/prompts";
 import chalk2 from "chalk";
@@ -510,8 +510,8 @@ var DISPATCH_MAP = {
   },
   copilot: {
     command: "copilot",
-    args: (_promptFile, _cwd) => ["-p"],
-    useStdinPipe: true,
+    args: (promptFile, _cwd) => ["-p", readFileSync4(promptFile, "utf-8")],
+    useStdinPipe: false,
     needsFile: true,
     checkBinary: "copilot"
   }
@@ -750,7 +750,7 @@ function getDefaultProfile() {
 import { Command as Command3 } from "commander";
 import * as p5 from "@clack/prompts";
 import chalk4 from "chalk";
-import { existsSync as existsSync5, readFileSync as readFileSync4 } from "fs";
+import { existsSync as existsSync5, readFileSync as readFileSync5 } from "fs";
 import { join as join5 } from "path";
 import fg2 from "fast-glob";
 var AGENT_PATHS = {
@@ -796,7 +796,7 @@ async function validate(targetDir, agents) {
     absolute: true
   });
   for (const file of mdFiles) {
-    const content = readFileSync4(file, "utf-8");
+    const content = readFileSync5(file, "utf-8");
     const placeholders = content.match(/<[a-z][a-z\s\-]*>/g);
     if (placeholders && placeholders.length > 0) {
       const relativePath = file.replace(targetDir + "/", "");

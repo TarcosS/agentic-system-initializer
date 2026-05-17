@@ -1,5 +1,5 @@
 import { execSync, spawn } from "node:child_process";
-import { writeFileSync, mkdirSync, existsSync, createReadStream } from "node:fs";
+import { writeFileSync, mkdirSync, existsSync, createReadStream, readFileSync } from "node:fs";
 import { join } from "node:path";
 import * as p from "@clack/prompts";
 import chalk from "chalk";
@@ -44,8 +44,8 @@ const DISPATCH_MAP: Partial<Record<AgentId, DispatchConfig>> = {
   },
   copilot: {
     command: "copilot",
-    args: (_promptFile, _cwd) => ["-p"],
-    useStdinPipe: true,
+    args: (promptFile, _cwd) => ["-p", readFileSync(promptFile, "utf-8")],
+    useStdinPipe: false,
     needsFile: true,
     checkBinary: "copilot",
   },
