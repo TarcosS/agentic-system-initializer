@@ -474,7 +474,7 @@ function buildAnalysisSummary(analysis) {
 
 // src/utils/dispatch.ts
 import { execSync, spawn } from "child_process";
-import { writeFileSync as writeFileSync2, mkdirSync, existsSync as existsSync3, createReadStream, readFileSync as readFileSync4 } from "fs";
+import { writeFileSync as writeFileSync2, mkdirSync, existsSync as existsSync3, readFileSync as readFileSync4 } from "fs";
 import { join as join3 } from "path";
 import * as p3 from "@clack/prompts";
 import chalk2 from "chalk";
@@ -551,20 +551,21 @@ async function dispatchToAgent(agent, prompt, cwd) {
   const promptFile = writePromptToTempFile(prompt, cwd);
   const args = config.args(promptFile, cwd);
   if (config.useStdinPipe) {
-    p3.log.info(`Running: cat ${promptFile} | ${config.command} ${args.join(" ")}`);
+    p3.log.info(`Running: ${config.command} ${args.join(" ")} < ${promptFile}`);
   } else {
-    p3.log.info(`Running: ${config.command} ${args.join(" ")}`);
+    p3.log.info(`Running: ${config.command} ${args.join(" ").length > 200 ? args[0] + " ..." : args.join(" ")}`);
   }
+  p3.log.info(chalk2.dim("Agent output will appear below. This may take a while...\n"));
   return new Promise((resolve2) => {
-    const stdinMode = config.useStdinPipe ? "pipe" : "inherit";
     const child = spawn(config.command, args, {
       cwd,
-      stdio: [stdinMode, "inherit", "inherit"],
+      stdio: config.useStdinPipe ? ["pipe", "inherit", "inherit"] : ["inherit", "inherit", "inherit"],
       env: { ...process.env }
     });
     if (config.useStdinPipe && child.stdin) {
-      const fileStream = createReadStream(promptFile);
-      fileStream.pipe(child.stdin);
+      const promptContent = readFileSync4(promptFile, "utf-8");
+      child.stdin.write(promptContent);
+      child.stdin.end();
     }
     child.on("close", (code) => {
       if (code === 0) {
