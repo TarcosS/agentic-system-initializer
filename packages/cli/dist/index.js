@@ -166,17 +166,27 @@ import chalk from "chalk";
 import { readFileSync as readFileSync2, writeFileSync, existsSync as existsSync2 } from "fs";
 import { join as join2 } from "path";
 async function collectProfile() {
-  const role = await p.select({
+  const roleChoice = await p.select({
     message: "What's your role and experience level?",
     options: [
       { value: "junior", label: "Junior Developer" },
       { value: "mid", label: "Mid-Level Developer" },
       { value: "senior", label: "Senior Developer" },
       { value: "lead", label: "Tech Lead / Architect" },
-      { value: "solo", label: "Solo Founder / Indie" }
+      { value: "solo", label: "Solo Founder / Indie" },
+      { value: "_custom", label: "Other \u2014 let me type it" }
     ]
   });
-  if (p.isCancel(role)) process.exit(0);
+  if (p.isCancel(roleChoice)) process.exit(0);
+  let role = roleChoice;
+  if (roleChoice === "_custom") {
+    const customRole = await p.text({
+      message: "Describe your role:",
+      placeholder: "e.g., CTO, DevRel, Security Engineer, ML Researcher"
+    });
+    if (p.isCancel(customRole)) process.exit(0);
+    role = customRole || "developer";
+  }
   const domain = await p.select({
     message: "What's your primary domain?",
     options: [
