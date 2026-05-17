@@ -29,7 +29,7 @@ export const AGENT_LABELS: Record<AgentId, string> = {
 
 export async function selectAgents(): Promise<AgentId[]> {
   const selected = await p.multiselect({
-    message: "Which AI coding agents do you use? (select all that apply)",
+    message: "Which AI coding agents do you use? (press space to select, enter to confirm)",
     options: Object.entries(AGENT_LABELS).map(([value, label]) => ({
       value: value as AgentId,
       label,

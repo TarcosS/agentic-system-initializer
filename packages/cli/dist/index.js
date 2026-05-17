@@ -334,7 +334,7 @@ var AGENT_LABELS = {
 };
 async function selectAgents() {
   const selected = await p2.multiselect({
-    message: "Which AI coding agents do you use? (select all that apply)",
+    message: "Which AI coding agents do you use? (press space to select, enter to confirm)",
     options: Object.entries(AGENT_LABELS).map(([value, label]) => ({
       value,
       label
