@@ -494,11 +494,11 @@ var DISPATCH_MAP = {
     checkBinary: "aider"
   },
   copilot: {
-    command: "gh",
-    args: (promptFile, _cwd) => ["copilot", "suggest", "-f", promptFile],
-    useStdinPipe: false,
+    command: "copilot",
+    args: (_promptFile, _cwd) => ["-p"],
+    useStdinPipe: true,
     needsFile: true,
-    checkBinary: "gh"
+    checkBinary: "copilot"
   }
 };
 var IDE_AGENTS = ["cursor", "windsurf", "roo-code", "kilo-code", "cline"];

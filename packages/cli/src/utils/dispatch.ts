@@ -43,11 +43,11 @@ const DISPATCH_MAP: Partial<Record<AgentId, DispatchConfig>> = {
     checkBinary: "aider",
   },
   copilot: {
-    command: "gh",
-    args: (promptFile, _cwd) => ["copilot", "suggest", "-f", promptFile],
-    useStdinPipe: false,
+    command: "copilot",
+    args: (_promptFile, _cwd) => ["-p"],
+    useStdinPipe: true,
     needsFile: true,
-    checkBinary: "gh",
+    checkBinary: "copilot",
   },
 };
 
