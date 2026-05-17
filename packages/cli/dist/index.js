@@ -481,7 +481,7 @@ import chalk2 from "chalk";
 var DISPATCH_MAP = {
   "claude-code": {
     command: "claude",
-    args: (_promptFile, _cwd) => ["-p", "--verbose"],
+    args: (_promptFile, _cwd) => ["-p", "--verbose", "--permission-mode", "acceptEdits"],
     useStdinPipe: true,
     // pipe prompt via stdin for streaming
     needsFile: true,
@@ -489,7 +489,7 @@ var DISPATCH_MAP = {
   },
   codex: {
     command: "codex",
-    args: (promptFile, _cwd) => ["--prompt-file", promptFile],
+    args: (promptFile, _cwd) => ["--prompt-file", promptFile, "--full-auto"],
     useStdinPipe: false,
     needsFile: true,
     checkBinary: "codex"
@@ -503,14 +503,14 @@ var DISPATCH_MAP = {
   },
   aider: {
     command: "aider",
-    args: (promptFile, _cwd) => ["--message-file", promptFile],
+    args: (promptFile, _cwd) => ["--message-file", promptFile, "--yes-always"],
     useStdinPipe: false,
     needsFile: true,
     checkBinary: "aider"
   },
   copilot: {
     command: "copilot",
-    args: (promptFile, _cwd) => ["-p", readFileSync4(promptFile, "utf-8")],
+    args: (promptFile, _cwd) => ["-p", readFileSync4(promptFile, "utf-8"), "--allow-all"],
     useStdinPipe: false,
     needsFile: true,
     checkBinary: "copilot"

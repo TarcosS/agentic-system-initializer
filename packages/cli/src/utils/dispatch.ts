@@ -16,14 +16,14 @@ interface DispatchConfig {
 const DISPATCH_MAP: Partial<Record<AgentId, DispatchConfig>> = {
   "claude-code": {
     command: "claude",
-    args: (_promptFile, _cwd) => ["-p", "--verbose"],
+    args: (_promptFile, _cwd) => ["-p", "--verbose", "--permission-mode", "acceptEdits"],
     useStdinPipe: true, // pipe prompt via stdin for streaming
     needsFile: true,
     checkBinary: "claude",
   },
   codex: {
     command: "codex",
-    args: (promptFile, _cwd) => ["--prompt-file", promptFile],
+    args: (promptFile, _cwd) => ["--prompt-file", promptFile, "--full-auto"],
     useStdinPipe: false,
     needsFile: true,
     checkBinary: "codex",
@@ -37,14 +37,14 @@ const DISPATCH_MAP: Partial<Record<AgentId, DispatchConfig>> = {
   },
   aider: {
     command: "aider",
-    args: (promptFile, _cwd) => ["--message-file", promptFile],
+    args: (promptFile, _cwd) => ["--message-file", promptFile, "--yes-always"],
     useStdinPipe: false,
     needsFile: true,
     checkBinary: "aider",
   },
   copilot: {
     command: "copilot",
-    args: (promptFile, _cwd) => ["-p", readFileSync(promptFile, "utf-8")],
+    args: (promptFile, _cwd) => ["-p", readFileSync(promptFile, "utf-8"), "--allow-all"],
     useStdinPipe: false,
     needsFile: true,
     checkBinary: "copilot",
