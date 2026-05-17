@@ -1,5 +1,5 @@
 import { execSync, spawn } from "node:child_process";
-import { writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { writeFileSync, mkdirSync, existsSync, createReadStream } from "node:fs";
 import { join } from "node:path";
 import * as p from "@clack/prompts";
 import chalk from "chalk";
@@ -8,38 +8,44 @@ import type { AgentId } from "./agent-selector.js";
 interface DispatchConfig {
   command: string;
   args: (promptFile: string, cwd: string) => string[];
-  needsFile: boolean; // some agents need prompt as file, not inline
-  checkBinary: string; // binary to check existence
+  useStdinPipe: boolean; // pipe prompt file to stdin instead of arg
+  needsFile: boolean;
+  checkBinary: string;
 }
 
 const DISPATCH_MAP: Partial<Record<AgentId, DispatchConfig>> = {
   "claude-code": {
     command: "claude",
-    args: (promptFile, _cwd) => ["-p", `@${promptFile}`, "--verbose"],
+    args: (_promptFile, _cwd) => ["-p", "--verbose"],
+    useStdinPipe: true, // pipe prompt via stdin for streaming
     needsFile: true,
     checkBinary: "claude",
   },
   codex: {
     command: "codex",
     args: (promptFile, _cwd) => ["--prompt-file", promptFile],
+    useStdinPipe: false,
     needsFile: true,
     checkBinary: "codex",
   },
   "gemini-cli": {
     command: "gemini",
-    args: (promptFile, _cwd) => ["-p", `@${promptFile}`],
+    args: (_promptFile, _cwd) => [],
+    useStdinPipe: true,
     needsFile: true,
     checkBinary: "gemini",
   },
   aider: {
     command: "aider",
     args: (promptFile, _cwd) => ["--message-file", promptFile],
+    useStdinPipe: false,
     needsFile: true,
     checkBinary: "aider",
   },
   copilot: {
     command: "gh",
     args: (promptFile, _cwd) => ["copilot", "suggest", "-f", promptFile],
+    useStdinPipe: false,
     needsFile: true,
     checkBinary: "gh",
   },
@@ -92,19 +98,30 @@ export async function dispatchToAgent(
     return writePromptFile(agent, prompt, cwd);
   }
 
-  // Write prompt to temp file (agents work better with file input)
+  // Write prompt to temp file
   const promptFile = writePromptToTempFile(prompt, cwd);
   const args = config.args(promptFile, cwd);
 
-  p.log.info(`Running: ${config.command} ${args.join(" ")}`);
+  if (config.useStdinPipe) {
+    p.log.info(`Running: cat ${promptFile} | ${config.command} ${args.join(" ")}`);
+  } else {
+    p.log.info(`Running: ${config.command} ${args.join(" ")}`);
+  }
 
-  // Spawn the agent process (inherit stdio so user can interact)
+  // Spawn the agent process with live output
   return new Promise((resolve) => {
+    const stdinMode = config.useStdinPipe ? "pipe" : "inherit";
     const child = spawn(config.command, args, {
       cwd,
-      stdio: "inherit",
+      stdio: [stdinMode, "inherit", "inherit"],
       env: { ...process.env },
     });
+
+    // Pipe prompt file to stdin if needed
+    if (config.useStdinPipe && child.stdin) {
+      const fileStream = createReadStream(promptFile);
+      fileStream.pipe(child.stdin);
+    }
 
     child.on("close", (code) => {
       if (code === 0) {

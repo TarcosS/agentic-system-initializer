@@ -459,38 +459,44 @@ function buildAnalysisSummary(analysis) {
 
 // src/utils/dispatch.ts
 import { execSync, spawn } from "child_process";
-import { writeFileSync as writeFileSync2, mkdirSync, existsSync as existsSync3 } from "fs";
+import { writeFileSync as writeFileSync2, mkdirSync, existsSync as existsSync3, createReadStream } from "fs";
 import { join as join3 } from "path";
 import * as p3 from "@clack/prompts";
 import chalk2 from "chalk";
 var DISPATCH_MAP = {
   "claude-code": {
     command: "claude",
-    args: (promptFile, _cwd) => ["-p", `@${promptFile}`, "--verbose"],
+    args: (_promptFile, _cwd) => ["-p", "--verbose"],
+    useStdinPipe: true,
+    // pipe prompt via stdin for streaming
     needsFile: true,
     checkBinary: "claude"
   },
   codex: {
     command: "codex",
     args: (promptFile, _cwd) => ["--prompt-file", promptFile],
+    useStdinPipe: false,
     needsFile: true,
     checkBinary: "codex"
   },
   "gemini-cli": {
     command: "gemini",
-    args: (promptFile, _cwd) => ["-p", `@${promptFile}`],
+    args: (_promptFile, _cwd) => [],
+    useStdinPipe: true,
     needsFile: true,
     checkBinary: "gemini"
   },
   aider: {
     command: "aider",
     args: (promptFile, _cwd) => ["--message-file", promptFile],
+    useStdinPipe: false,
     needsFile: true,
     checkBinary: "aider"
   },
   copilot: {
     command: "gh",
     args: (promptFile, _cwd) => ["copilot", "suggest", "-f", promptFile],
+    useStdinPipe: false,
     needsFile: true,
     checkBinary: "gh"
   }
@@ -529,13 +535,22 @@ async function dispatchToAgent(agent, prompt, cwd) {
   }
   const promptFile = writePromptToTempFile(prompt, cwd);
   const args = config.args(promptFile, cwd);
-  p3.log.info(`Running: ${config.command} ${args.join(" ")}`);
+  if (config.useStdinPipe) {
+    p3.log.info(`Running: cat ${promptFile} | ${config.command} ${args.join(" ")}`);
+  } else {
+    p3.log.info(`Running: ${config.command} ${args.join(" ")}`);
+  }
   return new Promise((resolve2) => {
+    const stdinMode = config.useStdinPipe ? "pipe" : "inherit";
     const child = spawn(config.command, args, {
       cwd,
-      stdio: "inherit",
+      stdio: [stdinMode, "inherit", "inherit"],
       env: { ...process.env }
     });
+    if (config.useStdinPipe && child.stdin) {
+      const fileStream = createReadStream(promptFile);
+      fileStream.pipe(child.stdin);
+    }
     child.on("close", (code) => {
       if (code === 0) {
         resolve2({
