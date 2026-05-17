@@ -193,10 +193,11 @@ async function collectProfile() {
   if (p.isCancel(domain)) process.exit(0);
   const expertiseRaw = await p.text({
     message: "What frameworks/tools are you most experienced with?",
-    placeholder: "e.g., React, Next.js, PostgreSQL, AWS"
+    placeholder: "e.g., React, Next.js, PostgreSQL, AWS",
+    defaultValue: ""
   });
   if (p.isCancel(expertiseRaw)) process.exit(0);
-  const expertise = expertiseRaw.split(",").map((s) => s.trim()).filter(Boolean);
+  const expertise = (expertiseRaw || "").split(",").map((s) => s.trim()).filter(Boolean);
   const workingStyle = await p.select({
     message: "When building something non-trivial, what's your style?",
     options: [
@@ -239,7 +240,7 @@ async function collectProfile() {
     defaultValue: ""
   });
   if (p.isCancel(prefsRaw)) process.exit(0);
-  const preferences = prefsRaw.split(",").map((s) => s.trim()).filter(Boolean);
+  const preferences = (prefsRaw || "").split(",").map((s) => s.trim()).filter(Boolean);
   return {
     role,
     domain,

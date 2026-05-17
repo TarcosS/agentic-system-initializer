@@ -47,9 +47,10 @@ export async function collectProfile(): Promise<UserProfile> {
   const expertiseRaw = await p.text({
     message: "What frameworks/tools are you most experienced with?",
     placeholder: "e.g., React, Next.js, PostgreSQL, AWS",
+    defaultValue: "",
   });
   if (p.isCancel(expertiseRaw)) process.exit(0);
-  const expertise = (expertiseRaw as string)
+  const expertise = ((expertiseRaw as string) || "")
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
@@ -100,7 +101,7 @@ export async function collectProfile(): Promise<UserProfile> {
     defaultValue: "",
   });
   if (p.isCancel(prefsRaw)) process.exit(0);
-  const preferences = (prefsRaw as string)
+  const preferences = ((prefsRaw as string) || "")
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
