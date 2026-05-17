@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 // src/index.ts
-import { Command as Command5 } from "commander";
+import { Command as Command6 } from "commander";
 
 // src/commands/init.ts
 import { Command as Command2 } from "commander";
@@ -510,10 +510,10 @@ async function dispatchToAgent(agent, prompt, cwd) {
     );
     return writePromptFile(agent, prompt, cwd);
   }
-  const confirm2 = await p3.confirm({
+  const confirm3 = await p3.confirm({
     message: `Ready to send prompt to ${chalk2.bold(agent)} via \`${config.command}\`. Proceed?`
   });
-  if (p3.isCancel(confirm2) || !confirm2) {
+  if (p3.isCancel(confirm3) || !confirm3) {
     return writePromptFile(agent, prompt, cwd);
   }
   const promptFile = writePromptToTempFile(prompt, cwd);
@@ -781,7 +781,7 @@ async function validate(targetDir, agents) {
     ".gemini/memory/decisions.md"
   ];
   total++;
-  const hasMemory = memoryPaths.some((p7) => existsSync5(join5(targetDir, p7)));
+  const hasMemory = memoryPaths.some((p8) => existsSync5(join5(targetDir, p8)));
   if (hasMemory) {
     passed++;
   } else {
@@ -929,8 +929,94 @@ function findSpecFile2(startDir) {
   return null;
 }
 
+// src/commands/clear.ts
+import { Command as Command5 } from "commander";
+import * as p7 from "@clack/prompts";
+import chalk6 from "chalk";
+import { existsSync as existsSync7, rmSync, readdirSync } from "fs";
+import { join as join7 } from "path";
+var AGENT_GENERATED_PATHS = [
+  // Shared
+  ".agents",
+  // Per-agent config files
+  "CLAUDE.md",
+  "AGENTS.md",
+  "GEMINI.md",
+  ".claude",
+  ".cursor/rules/00-core.mdc",
+  ".github/copilot-instructions.md",
+  ".clinerules/00-core.md",
+  ".windsurf/rules/general.md",
+  ".roo/rules/00-core.md",
+  ".kilocode/rules/00-core.md",
+  ".aider/instructions.md"
+];
+var AGENT_DIRS_CLEANUP = [
+  ".cursor/rules",
+  ".cursor",
+  ".clinerules",
+  ".windsurf/rules",
+  ".windsurf",
+  ".roo/rules",
+  ".roo",
+  ".kilocode/rules",
+  ".kilocode",
+  ".aider",
+  ".claude"
+];
+var clearCommand = new Command5("clear").description("Remove all agentinit-generated files and directories").argument("[directory]", "Target directory", ".").option("--force", "Skip confirmation prompt").action(async (directory, options) => {
+  p7.intro(chalk6.bgCyan(" agentinit clear "));
+  const targetDir = directory === "." ? process.cwd() : directory;
+  const existing = AGENT_GENERATED_PATHS.filter(
+    (p8) => existsSync7(join7(targetDir, p8))
+  );
+  if (existing.length === 0) {
+    p7.log.info("Nothing to clear \u2014 no agentinit-generated files found.");
+    p7.outro("");
+    return;
+  }
+  p7.log.warn("The following will be removed:");
+  for (const item of existing) {
+    p7.log.message(`  ${chalk6.red("\u2715")} ${item}`);
+  }
+  if (!options.force) {
+    const confirm3 = await p7.confirm({
+      message: "This is irreversible. Proceed?"
+    });
+    if (p7.isCancel(confirm3) || !confirm3) {
+      p7.log.info("Cancelled.");
+      p7.outro("");
+      return;
+    }
+  }
+  let removed = 0;
+  for (const item of existing) {
+    const fullPath = join7(targetDir, item);
+    try {
+      rmSync(fullPath, { recursive: true, force: true });
+      removed++;
+    } catch (err) {
+      p7.log.warn(`Failed to remove ${item}: ${err}`);
+    }
+  }
+  for (const dir of AGENT_DIRS_CLEANUP) {
+    const fullPath = join7(targetDir, dir);
+    if (existsSync7(fullPath)) {
+      try {
+        const contents = readdirSync(fullPath);
+        if (contents.length === 0) {
+          rmSync(fullPath, { recursive: true });
+        }
+      } catch {
+      }
+    }
+  }
+  p7.log.success(`Removed ${removed} item(s).`);
+  p7.outro("Project cleared. Run `agentinit init` to start fresh.");
+});
+
 // src/index.ts
-var program = new Command5();
+var program = new Command6();
 program.name("agentinit").description(
   "Initialize AI coding agent configurations \u2014 compile agentic-system-initializer into targeted, user-profiled scaffolds"
 ).version("0.1.0");
@@ -938,4 +1024,5 @@ program.addCommand(initCommand);
 program.addCommand(profileCommand);
 program.addCommand(validateCommand);
 program.addCommand(generateCommand);
+program.addCommand(clearCommand);
 program.parse();
