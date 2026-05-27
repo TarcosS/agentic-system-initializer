@@ -1,5 +1,5 @@
 const CDN_DEFAULTS = {
-  baseUrl: "https://agentinit.azureedge.net/agentinit",
+  baseUrl: "https://agentinit-b6hecpf6ebctd3h6.z02.azurefd.net/agentinit",
   cacheDir: ".agentinit/cache",
   timeout: 10_000,
   retries: 2,
