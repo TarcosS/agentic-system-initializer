@@ -66,7 +66,7 @@ export async function validate(
 
   for (const file of mdFiles) {
     const content = readFileSync(file, "utf-8");
-    const placeholders = content.match(/<[a-z][a-z\s\-]*>/g);
+    const placeholders = content.match(/<[a-z][a-z\s-]*>/g);
     if (placeholders && placeholders.length > 0) {
       const relativePath = file.replace(targetDir + "/", "");
       const unique = [...new Set(placeholders)].slice(0, 3);
