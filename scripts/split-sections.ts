@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { createHash } from "node:crypto";
 
@@ -160,7 +160,49 @@ export function splitSections(specPath: string, outDir: string): Manifest {
 
   writeFileSync(join(versionDir, "manifest.json"), JSON.stringify(manifest, null, 2), "utf-8");
 
+  // Also copy built-in rules to CDN output
+  copyBuiltinRules(versionDir);
+
   return manifest;
+}
+
+function copyBuiltinRules(versionDir: string): void {
+  // versionDir = <root>/dist/cdn/v0.1.0 → go up 3 levels to root
+  const rootDir = join(versionDir, "..", "..", "..");
+  const builtinSrc = join(rootDir, "packages", "cli", "src", "rules", "builtin");
+  const rulesDir = join(versionDir, "rules");
+
+  if (!existsSync(builtinSrc)) {
+    console.warn("⚠️  Built-in rules dir not found, skipping rules copy");
+    return;
+  }
+
+  if (!existsSync(rulesDir)) mkdirSync(rulesDir, { recursive: true });
+
+  const rulesMeta: { slug: string; path: string; size: number; sha256: string }[] = [];
+
+  const files = readdirSync(builtinSrc).filter((f) => f.endsWith(".md"));
+  for (const file of files) {
+    const content = readFileSync(join(builtinSrc, file), "utf-8");
+    const destPath = join(rulesDir, file);
+    writeFileSync(destPath, content, "utf-8");
+
+    rulesMeta.push({
+      slug: file.replace(/\.md$/, ""),
+      path: `rules/${file}`,
+      size: Buffer.byteLength(content),
+      sha256: sha256(content),
+    });
+  }
+
+  const rulesManifest = {
+    version: JSON.parse(readFileSync(join(rootDir, "packages", "cli", "package.json"), "utf-8")).version,
+    generatedAt: new Date().toISOString(),
+    rules: rulesMeta,
+  };
+
+  writeFileSync(join(rulesDir, "rules-manifest.json"), JSON.stringify(rulesManifest, null, 2), "utf-8");
+  console.log(`   📏 ${rulesMeta.length} built-in rules copied to rules/`);
 }
 
 // CLI entry point

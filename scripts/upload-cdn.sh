@@ -59,6 +59,19 @@ az storage blob upload \
   --overwrite \
   --output none
 
+# Fix content type for rules-manifest.json (if exists)
+if [[ -f "$SOURCE_DIR/rules/rules-manifest.json" ]]; then
+  az storage blob upload \
+    --file "$SOURCE_DIR/rules/rules-manifest.json" \
+    --container-name "$CONTAINER" \
+    --name "v${VERSION}/rules/rules-manifest.json" \
+    --account-name "$AZURE_STORAGE_ACCOUNT" \
+    --account-key "$AZURE_STORAGE_KEY" \
+    --content-type "application/json" \
+    --overwrite \
+    --output none
+fi
+
 echo "✅ Uploaded to: https://${AZURE_STORAGE_ACCOUNT}.blob.core.windows.net/${CONTAINER}/v${VERSION}/"
 
 # CDN cache purge (optional)

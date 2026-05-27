@@ -172,3 +172,107 @@ export async function fetchAgentAndUniversal(
 
   return { agentSection, universalSection, manifest };
 }
+
+// ── Rules CDN Fetcher ─────────────────────────────────────────
+
+export interface RulesManifest {
+  version: string;
+  generatedAt: string;
+  rules: {
+    slug: string;
+    path: string;
+    size: number;
+    sha256: string;
+  }[];
+}
+
+export async function fetchRulesManifest(
+  version: string,
+  config: CdnConfig,
+): Promise<RulesManifest> {
+  const cacheDir = getCacheDir(config, version);
+  const cachedPath = join(cacheDir, "rules", "rules-manifest.json");
+
+  if (config.offline) {
+    if (existsSync(cachedPath)) {
+      return JSON.parse(readFileSync(cachedPath, "utf-8")) as RulesManifest;
+    }
+    throw new Error(`Offline mode: no cached rules manifest for v${version}`);
+  }
+
+  const baseUrl = getCdnVersionUrl(config, version);
+  const url = `${baseUrl}/rules/rules-manifest.json`;
+
+  try {
+    const text = await fetchWithRetry(url, config);
+    const manifest = JSON.parse(text) as RulesManifest;
+
+    const dir = join(cacheDir, "rules");
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    writeFileSync(cachedPath, text, "utf-8");
+
+    return manifest;
+  } catch (error) {
+    if (existsSync(cachedPath)) {
+      return JSON.parse(readFileSync(cachedPath, "utf-8")) as RulesManifest;
+    }
+    throw error;
+  }
+}
+
+export async function fetchBuiltinRule(
+  slug: string,
+  version: string,
+  config: CdnConfig,
+  rulesManifest?: RulesManifest,
+): Promise<string> {
+  const manifest = rulesManifest ?? (await fetchRulesManifest(version, config));
+  const meta = manifest.rules.find((r) => r.slug === slug);
+
+  if (!meta) {
+    throw new Error(`Built-in rule "${slug}" not found in rules manifest v${version}`);
+  }
+
+  const cacheDir = getCacheDir(config, version);
+  const cachedFile = join(cacheDir, meta.path);
+
+  if (existsSync(cachedFile)) {
+    const cached = readFileSync(cachedFile, "utf-8");
+    if (verifySha256(cached, meta.sha256)) return cached;
+  }
+
+  if (config.offline) {
+    if (existsSync(cachedFile)) return readFileSync(cachedFile, "utf-8");
+    throw new Error(`Offline mode: rule "${slug}" not cached`);
+  }
+
+  const baseUrl = getCdnVersionUrl(config, version);
+  const url = `${baseUrl}/${meta.path}`;
+  const content = await fetchWithRetry(url, config);
+
+  if (!verifySha256(content, meta.sha256)) {
+    throw new Error(`Integrity check failed for rule "${slug}"`);
+  }
+
+  const dir = join(cacheDir, "rules");
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  writeFileSync(cachedFile, content, "utf-8");
+
+  return content;
+}
+
+export async function fetchAllBuiltinRules(
+  version: string,
+  config: CdnConfig,
+): Promise<{ slug: string; content: string }[]> {
+  const manifest = await fetchRulesManifest(version, config);
+
+  const results = await Promise.all(
+    manifest.rules.map(async (meta) => ({
+      slug: meta.slug,
+      content: await fetchBuiltinRule(meta.slug, version, config, manifest),
+    })),
+  );
+
+  return results;
+}
