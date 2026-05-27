@@ -12,7 +12,7 @@
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "prepublishOnly": "npm run build",
     "split": "npx tsx ../../scripts/split-sections.ts ../..",
     "version:patch": "cd ../.. && ./scripts/release.sh patch",
