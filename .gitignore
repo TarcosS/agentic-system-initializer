@@ -1,1 +1,4 @@
 .agents/.tmp/
+node_modules/
+dist/
+*.tgz

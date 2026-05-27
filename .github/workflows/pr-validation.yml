@@ -1,0 +1,91 @@
+name: PR Validation
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+jobs:
+  check-approved-issue:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check linked issue is approved
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const prBody = context.payload.pull_request.body || '';
+            const prNumber = context.payload.pull_request.number;
+
+            // Extract issue numbers from "Closes #N" or "Fixes #N" patterns
+            const issuePattern = /(?:closes|fixes|resolves)\s+#(\d+)/gi;
+            const matches = [...prBody.matchAll(issuePattern)];
+
+            if (matches.length === 0) {
+              core.setFailed(
+                '❌ This PR is not linked to any issue. ' +
+                'Please add "Closes #<issue-number>" to the PR description. ' +
+                'See CONTRIBUTING.md for details.'
+              );
+              return;
+            }
+
+            let hasApprovedIssue = false;
+
+            for (const match of matches) {
+              const issueNumber = parseInt(match[1]);
+              try {
+                const issue = await github.rest.issues.get({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber
+                });
+
+                const labels = issue.data.labels.map(l => l.name);
+                if (labels.includes('approved')) {
+                  hasApprovedIssue = true;
+                  console.log(`✅ Issue #${issueNumber} has the 'approved' label.`);
+                  break;
+                } else {
+                  console.log(`⚠️ Issue #${issueNumber} exists but is not approved (missing 'approved' label).`);
+                }
+              } catch (error) {
+                console.log(`⚠️ Could not fetch issue #${issueNumber}: ${error.message}`);
+              }
+            }
+
+            if (!hasApprovedIssue) {
+              core.setFailed(
+                '❌ This PR is not linked to an approved issue. ' +
+                'The linked issue must have the "approved" label. ' +
+                'Please wait for a maintainer to approve the issue before submitting a PR.'
+              );
+            }
+
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        working-directory: packages/cli
+        run: npm ci
+
+      - name: Type check
+        working-directory: packages/cli
+        run: npm run typecheck
+
+      - name: Lint
+        working-directory: packages/cli
+        run: npm run lint
+
+      - name: Test
+        working-directory: packages/cli
+        run: npm run test
+
+      - name: Build
+        working-directory: packages/cli
+        run: npm run build

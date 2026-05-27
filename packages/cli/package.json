@@ -13,7 +13,10 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/",
     "test": "vitest run",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "version:patch": "cd ../.. && ./scripts/release.sh patch",
+    "version:minor": "cd ../.. && ./scripts/release.sh minor",
+    "version:major": "cd ../.. && ./scripts/release.sh major"
   },
   "keywords": [
     "ai",
