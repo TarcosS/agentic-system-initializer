@@ -15,7 +15,8 @@ export const generateCommand = new Command("generate")
   .option("-o, --output <file>", "Output file (default: dispatch to agent)")
   .option("--clipboard", "Copy to clipboard instead of dispatching")
   .option("--no-dispatch", "Print to stdout instead of launching agent")
-  .option("--spec <path>", "Path to agentic-system-initializer.md")
+  .option("--spec <path>", "Path to agentic-system-initializer.md (uses CDN by default)")
+  .option("--offline", "Use cached/local sections only, skip CDN fetch")
   .action(async (options) => {
     p.intro(chalk.bgCyan(" agentinit generate "));
 
@@ -28,15 +29,9 @@ export const generateCommand = new Command("generate")
       return;
     }
 
-    // Determine spec file location
+    // Determine spec file location (optional — CDN is default)
     const specPath = options.spec ?? findSpecFile(targetDir);
-    if (!specPath || !existsSync(specPath)) {
-      p.log.error(
-        "Cannot find agentic-system-initializer.md. Use --spec to provide path."
-      );
-      p.outro("");
-      return;
-    }
+    const useOffline = options.offline ?? false;
 
     // Select agent
     let agent = options.agent;
@@ -64,15 +59,16 @@ export const generateCommand = new Command("generate")
     const analysis = await analyzeProject(targetDir);
 
     const genOptions: GenerateOptions = {
-      specPath,
+      specPath: specPath ?? undefined,
       agent,
       profile,
       analysis,
+      offline: useOffline,
     };
 
     const spinner = p.spinner();
     spinner.start("Generating slimmed prompt...");
-    const result = generatePrompt(genOptions);
+    const result = await generatePrompt(genOptions);
     spinner.stop("Prompt generated");
 
     if (options.output) {

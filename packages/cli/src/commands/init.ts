@@ -15,7 +15,8 @@ export const initCommand = new Command("init")
   .option("--agent <agents...>", "Pre-select agent(s) to skip interactive selection")
   .option("--skip-profile", "Use default profile (senior, high autonomy)")
   .option("--no-dispatch", "Generate prompt file only, don't launch agent")
-  .option("--spec <path>", "Path to agentic-system-initializer.md")
+  .option("--spec <path>", "Path to agentic-system-initializer.md (uses CDN by default)")
+  .option("--offline", "Use cached/local sections only, skip CDN fetch")
   .action(async (directory: string, options) => {
     p.intro(chalk.bgCyan(" agentinit "));
 
@@ -55,25 +56,20 @@ export const initCommand = new Command("init")
     }
     p.log.success(`Selected agent(s): ${agents.join(", ")}`);
 
-    // Find spec file
+    // Find spec file (optional — CDN is used by default)
     const specPath = options.spec ?? findSpecFile(targetDir);
-    if (!specPath || !existsSync(specPath)) {
-      p.log.error(
-        "Cannot find agentic-system-initializer.md. Use --spec to provide path."
-      );
-      p.outro("");
-      return;
-    }
+    const useOffline = options.offline ?? false;
 
     // Generate prompt for each agent and dispatch
     for (const agent of agents) {
       p.log.step(`Generating prompt for ${chalk.bold(agent)}...`);
 
-      const prompt = generatePrompt({
-        specPath,
+      const prompt = await generatePrompt({
+        specPath: specPath ?? undefined,
         agent,
         profile,
         analysis,
+        offline: useOffline,
       });
 
       p.log.success(`Prompt ready (${prompt.split("\n").length} lines)`);
@@ -117,7 +113,7 @@ export const initCommand = new Command("init")
       [
         `Agent(s): ${agents.join(", ")}`,
         `Profile: ${profile.role} / ${profile.domain} / autonomy=${profile.autonomy}`,
-        `Spec: ${specPath}`,
+        `Spec: ${specPath ?? "CDN (remote)"}`,
         "",
         "The agent will now:",
         "  1. Read your project structure",

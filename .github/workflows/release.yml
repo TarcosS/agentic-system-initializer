@@ -52,6 +52,21 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # ─────────────────────────────────────────────────────────────────
+      # CDN Deploy — split sections and upload to Azure Blob Storage
+      # ─────────────────────────────────────────────────────────────────
+      - name: Split sections
+        run: npx tsx scripts/split-sections.ts .
+
+      - name: Upload sections to Azure CDN
+        run: ./scripts/upload-cdn.sh
+        env:
+          AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
+          AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
+          AZURE_CDN_PROFILE: ${{ secrets.AZURE_CDN_PROFILE }}
+          AZURE_CDN_ENDPOINT: ${{ secrets.AZURE_CDN_ENDPOINT }}
+          AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
+
+      # ─────────────────────────────────────────────────────────────────
       # NPM Publish — uncomment when ready to publish publicly
       # ─────────────────────────────────────────────────────────────────
       # - name: Publish to npm

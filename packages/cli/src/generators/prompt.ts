@@ -1,19 +1,21 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import type { UserProfile } from "../commands/profile.js";
 import type { ProjectAnalysis } from "../analyzers/project.js";
 import { profileToMarkdown } from "../commands/profile.js";
+import { loadCdnConfig, type CdnConfig } from "../config.js";
+import { fetchAgentAndUniversal } from "../utils/cdn-fetcher.js";
 
 export interface GenerateOptions {
-  specPath: string;
+  specPath?: string;
   agent: string;
   profile: UserProfile;
   analysis: ProjectAnalysis;
+  offline?: boolean;
+  cdnConfig?: Partial<CdnConfig>;
 }
 
-export function generatePrompt(options: GenerateOptions): string {
-  const { specPath, agent, profile, analysis } = options;
-  const spec = readFileSync(specPath, "utf-8");
-  const lines = spec.split("\n");
+export async function generatePrompt(options: GenerateOptions): Promise<string> {
+  const { agent, profile, analysis } = options;
 
   const sections: string[] = [];
 
@@ -23,20 +25,79 @@ export function generatePrompt(options: GenerateOptions): string {
   // 2. User profile block
   sections.push(profileToMarkdown(profile));
 
-  // 3. Extract agent-specific section
-  const agentSection = extractAgentSection(lines, agent);
+  // 3 & 4. Get agent section + universal blocks (CDN or local)
+  const { agentSection, universalBlocks } = await resolveContent(options);
+
   if (agentSection) {
     sections.push(agentSection);
   }
-
-  // 4. Extract universal blocks (A.0 - A.13)
-  const universalBlocks = extractUniversalBlocks(lines, analysis);
   sections.push(universalBlocks);
 
   // 5. Step 0 analysis summary (so the agent knows project context)
   sections.push(buildAnalysisSummary(analysis));
 
   return sections.join("\n\n---\n\n");
+}
+
+async function resolveContent(
+  options: GenerateOptions,
+): Promise<{ agentSection: string | null; universalBlocks: string }> {
+  const { specPath, agent } = options;
+
+  // If --spec is provided and file exists, use local parsing (backward compat)
+  if (specPath && existsSync(specPath)) {
+    const spec = readFileSync(specPath, "utf-8");
+    const lines = spec.split("\n");
+    return {
+      agentSection: extractAgentSection(lines, agent),
+      universalBlocks: extractUniversalBlocks(lines),
+    };
+  }
+
+  // Otherwise, fetch from CDN
+  const cdnConfig = loadCdnConfig({
+    ...options.cdnConfig,
+    offline: options.offline ?? options.cdnConfig?.offline,
+  });
+
+  const version = getCliVersion();
+
+  try {
+    const result = await fetchAgentAndUniversal(agent, version, cdnConfig);
+    return {
+      agentSection: result.agentSection,
+      universalBlocks: result.universalSection,
+    };
+  } catch (error) {
+    // Final fallback: try local spec file in common locations
+    const fallbackPaths = [
+      "agentic-system-initializer.md",
+      "../agentic-system-initializer.md",
+    ];
+    for (const p of fallbackPaths) {
+      if (existsSync(p)) {
+        const spec = readFileSync(p, "utf-8");
+        const lines = spec.split("\n");
+        return {
+          agentSection: extractAgentSection(lines, agent),
+          universalBlocks: extractUniversalBlocks(lines),
+        };
+      }
+    }
+    throw new Error(
+      `Could not fetch sections from CDN and no local spec file found. ` +
+        `Use --spec to provide a local file, or check your network. (${error instanceof Error ? error.message : error})`,
+    );
+  }
+}
+
+function getCliVersion(): string {
+  try {
+    const pkg = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf-8"));
+    return pkg.version as string;
+  } catch {
+    return "0.1.0";
+  }
 }
 
 function buildHeader(agent: string, analysis: ProjectAnalysis): string {
@@ -109,7 +170,7 @@ function extractAgentSection(lines: string[], agent: string): string | null {
   return lines.slice(startIdx, endIdx).join("\n");
 }
 
-function extractUniversalBlocks(lines: string[], _analysis: ProjectAnalysis): string {
+function extractUniversalBlocks(lines: string[]): string {
   // Find the universal files / canonical blocks section
   let startIdx = -1;
   let endIdx = lines.length;
