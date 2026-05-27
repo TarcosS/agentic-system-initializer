@@ -7,8 +7,8 @@ import { Command as Command6 } from "commander";
 import { Command as Command2 } from "commander";
 import * as p4 from "@clack/prompts";
 import chalk3 from "chalk";
-import { existsSync as existsSync4 } from "fs";
-import { join as join4 } from "path";
+import { existsSync as existsSync6 } from "fs";
+import { join as join5 } from "path";
 
 // src/analyzers/project.ts
 import { existsSync, readFileSync } from "fs";
@@ -346,22 +346,201 @@ async function selectAgents() {
 }
 
 // src/generators/prompt.ts
-import { readFileSync as readFileSync3 } from "fs";
-function generatePrompt(options) {
-  const { specPath, agent, profile, analysis } = options;
-  const spec = readFileSync3(specPath, "utf-8");
-  const lines = spec.split("\n");
+import { readFileSync as readFileSync4, existsSync as existsSync4 } from "fs";
+
+// src/config.ts
+var CDN_DEFAULTS = {
+  baseUrl: "https://agentinit.azureedge.net/agentinit",
+  cacheDir: ".agentinit/cache",
+  timeout: 1e4,
+  retries: 2
+};
+function loadCdnConfig(overrides) {
+  return {
+    baseUrl: process.env["AGENTINIT_CDN_URL"] ?? overrides?.baseUrl ?? CDN_DEFAULTS.baseUrl,
+    cacheDir: overrides?.cacheDir ?? CDN_DEFAULTS.cacheDir,
+    timeout: overrides?.timeout ?? CDN_DEFAULTS.timeout,
+    retries: overrides?.retries ?? CDN_DEFAULTS.retries,
+    offline: overrides?.offline ?? process.env["AGENTINIT_OFFLINE"] === "1"
+  };
+}
+function getCdnVersionUrl(config, version) {
+  return `${config.baseUrl}/v${version}`;
+}
+
+// src/utils/cdn-fetcher.ts
+import { existsSync as existsSync3, mkdirSync, readFileSync as readFileSync3, writeFileSync as writeFileSync2 } from "fs";
+import { join as join3 } from "path";
+import { homedir } from "os";
+import { createHash } from "crypto";
+function getCacheDir(config, version) {
+  return join3(homedir(), config.cacheDir, `v${version}`);
+}
+async function fetchWithRetry(url, config) {
+  let lastError;
+  for (let attempt = 0; attempt <= config.retries; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), config.timeout);
+      const response = await fetch(url, { signal: controller.signal });
+      clearTimeout(timer);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      return await response.text();
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      if (attempt < config.retries) {
+        await new Promise((r) => setTimeout(r, 1e3 * (attempt + 1)));
+      }
+    }
+  }
+  throw lastError ?? new Error(`Failed to fetch ${url}`);
+}
+function verifySha256(content, expected) {
+  const actual = createHash("sha256").update(content).digest("hex");
+  return actual === expected;
+}
+async function fetchManifest(version, config) {
+  const cacheDir = getCacheDir(config, version);
+  const cachedManifest = join3(cacheDir, "manifest.json");
+  if (config.offline) {
+    if (existsSync3(cachedManifest)) {
+      return JSON.parse(readFileSync3(cachedManifest, "utf-8"));
+    }
+    throw new Error(`Offline mode: no cached manifest for v${version}`);
+  }
+  const baseUrl = getCdnVersionUrl(config, version);
+  const url = `${baseUrl}/manifest.json`;
+  try {
+    const text2 = await fetchWithRetry(url, config);
+    const manifest = JSON.parse(text2);
+    if (!existsSync3(cacheDir)) mkdirSync(cacheDir, { recursive: true });
+    writeFileSync2(cachedManifest, text2, "utf-8");
+    return manifest;
+  } catch (error) {
+    if (existsSync3(cachedManifest)) {
+      return JSON.parse(readFileSync3(cachedManifest, "utf-8"));
+    }
+    throw error;
+  }
+}
+async function fetchSection(sectionId, version, config, manifest) {
+  const resolved = manifest ?? await fetchManifest(version, config);
+  const meta = resolved.sections.find((s) => s.id === sectionId);
+  if (!meta) {
+    throw new Error(`Section "${sectionId}" not found in manifest v${version}`);
+  }
+  const cacheDir = getCacheDir(config, version);
+  const cachedFile = join3(cacheDir, meta.path);
+  if (existsSync3(cachedFile)) {
+    const cached = readFileSync3(cachedFile, "utf-8");
+    if (verifySha256(cached, meta.sha256)) {
+      return cached;
+    }
+  }
+  if (config.offline) {
+    if (existsSync3(cachedFile)) {
+      return readFileSync3(cachedFile, "utf-8");
+    }
+    throw new Error(`Offline mode: section "${sectionId}" not cached for v${version}`);
+  }
+  const baseUrl = getCdnVersionUrl(config, version);
+  const url = `${baseUrl}/${meta.path}`;
+  const content = await fetchWithRetry(url, config);
+  if (!verifySha256(content, meta.sha256)) {
+    throw new Error(`Integrity check failed for section "${sectionId}" \u2014 hash mismatch`);
+  }
+  const cacheSubDir = join3(cacheDir, ...meta.path.split("/").slice(0, -1));
+  if (!existsSync3(cacheSubDir)) mkdirSync(cacheSubDir, { recursive: true });
+  writeFileSync2(cachedFile, content, "utf-8");
+  return content;
+}
+async function fetchAgentAndUniversal(agentId, version, config) {
+  const manifest = await fetchManifest(version, config);
+  const agentSectionMap = {
+    "claude-code": "claude-code",
+    cursor: "cursor",
+    codex: "codex-cli",
+    copilot: "github-copilot",
+    "gemini-cli": "gemini-cli",
+    cline: "cline",
+    windsurf: "windsurf",
+    "roo-code": "roo-code",
+    "kilo-code": "kilo-code",
+    aider: "aider",
+    generic: "generic"
+  };
+  const sectionId = agentSectionMap[agentId] ?? agentId;
+  const [agentSection, universalSection] = await Promise.all([
+    fetchSection(sectionId, version, config, manifest),
+    fetchSection("universal-files", version, config, manifest)
+  ]);
+  return { agentSection, universalSection, manifest };
+}
+
+// src/generators/prompt.ts
+async function generatePrompt(options) {
+  const { agent, profile, analysis } = options;
   const sections = [];
   sections.push(buildHeader(agent, analysis));
   sections.push(profileToMarkdown(profile));
-  const agentSection = extractAgentSection(lines, agent);
+  const { agentSection, universalBlocks } = await resolveContent(options);
   if (agentSection) {
     sections.push(agentSection);
   }
-  const universalBlocks = extractUniversalBlocks(lines, analysis);
   sections.push(universalBlocks);
   sections.push(buildAnalysisSummary(analysis));
   return sections.join("\n\n---\n\n");
+}
+async function resolveContent(options) {
+  const { specPath, agent } = options;
+  if (specPath && existsSync4(specPath)) {
+    const spec = readFileSync4(specPath, "utf-8");
+    const lines = spec.split("\n");
+    return {
+      agentSection: extractAgentSection(lines, agent),
+      universalBlocks: extractUniversalBlocks(lines)
+    };
+  }
+  const cdnConfig = loadCdnConfig({
+    ...options.cdnConfig,
+    offline: options.offline ?? options.cdnConfig?.offline
+  });
+  const version = getCliVersion();
+  try {
+    const result = await fetchAgentAndUniversal(agent, version, cdnConfig);
+    return {
+      agentSection: result.agentSection,
+      universalBlocks: result.universalSection
+    };
+  } catch (error) {
+    const fallbackPaths = [
+      "agentic-system-initializer.md",
+      "../agentic-system-initializer.md"
+    ];
+    for (const p8 of fallbackPaths) {
+      if (existsSync4(p8)) {
+        const spec = readFileSync4(p8, "utf-8");
+        const lines = spec.split("\n");
+        return {
+          agentSection: extractAgentSection(lines, agent),
+          universalBlocks: extractUniversalBlocks(lines)
+        };
+      }
+    }
+    throw new Error(
+      `Could not fetch sections from CDN and no local spec file found. Use --spec to provide a local file, or check your network. (${error instanceof Error ? error.message : error})`
+    );
+  }
+}
+function getCliVersion() {
+  try {
+    const pkg = JSON.parse(readFileSync4(new URL("../../package.json", import.meta.url), "utf-8"));
+    return pkg.version;
+  } catch {
+    return "0.1.0";
+  }
 }
 function buildHeader(agent, analysis) {
   return [
@@ -422,7 +601,7 @@ function extractAgentSection(lines, agent) {
   if (startIdx < 0) return null;
   return lines.slice(startIdx, endIdx).join("\n");
 }
-function extractUniversalBlocks(lines, _analysis) {
+function extractUniversalBlocks(lines) {
   let startIdx = -1;
   let endIdx = lines.length;
   for (let i = 0; i < lines.length; i++) {
@@ -474,8 +653,8 @@ function buildAnalysisSummary(analysis) {
 
 // src/utils/dispatch.ts
 import { execSync, spawn } from "child_process";
-import { writeFileSync as writeFileSync2, mkdirSync, existsSync as existsSync3, readFileSync as readFileSync4 } from "fs";
-import { join as join3 } from "path";
+import { writeFileSync as writeFileSync3, mkdirSync as mkdirSync2, existsSync as existsSync5, readFileSync as readFileSync5 } from "fs";
+import { join as join4 } from "path";
 import * as p3 from "@clack/prompts";
 import chalk2 from "chalk";
 var DISPATCH_MAP = {
@@ -510,7 +689,7 @@ var DISPATCH_MAP = {
   },
   copilot: {
     command: "copilot",
-    args: (promptFile, _cwd) => ["-p", readFileSync4(promptFile, "utf-8"), "--allow-all"],
+    args: (promptFile, _cwd) => ["-p", readFileSync5(promptFile, "utf-8"), "--allow-all"],
     useStdinPipe: false,
     needsFile: true,
     checkBinary: "copilot"
@@ -563,7 +742,7 @@ async function dispatchToAgent(agent, prompt, cwd) {
       env: { ...process.env }
     });
     if (config.useStdinPipe && child.stdin) {
-      const promptContent = readFileSync4(promptFile, "utf-8");
+      const promptContent = readFileSync5(promptFile, "utf-8");
       child.stdin.write(promptContent);
       child.stdin.end();
     }
@@ -592,17 +771,17 @@ async function dispatchToAgent(agent, prompt, cwd) {
   });
 }
 function writePromptToTempFile(prompt, cwd) {
-  const dir = join3(cwd, ".agents", ".tmp");
-  if (!existsSync3(dir)) mkdirSync(dir, { recursive: true });
-  const filePath = join3(dir, "init-prompt.md");
-  writeFileSync2(filePath, prompt);
+  const dir = join4(cwd, ".agents", ".tmp");
+  if (!existsSync5(dir)) mkdirSync2(dir, { recursive: true });
+  const filePath = join4(dir, "init-prompt.md");
+  writeFileSync3(filePath, prompt);
   return filePath;
 }
 function writePromptFile(agent, prompt, cwd) {
-  const dir = join3(cwd, ".agents", ".tmp");
-  if (!existsSync3(dir)) mkdirSync(dir, { recursive: true });
-  const filePath = join3(dir, `${agent}-init-prompt.md`);
-  writeFileSync2(filePath, prompt);
+  const dir = join4(cwd, ".agents", ".tmp");
+  if (!existsSync5(dir)) mkdirSync2(dir, { recursive: true });
+  const filePath = join4(dir, `${agent}-init-prompt.md`);
+  writeFileSync3(filePath, prompt);
   return {
     success: true,
     method: "file",
@@ -632,7 +811,7 @@ function getDispatchInstructions(agent, promptFile) {
 }
 
 // src/commands/init.ts
-var initCommand = new Command2("init").description("Analyze project, build profile, generate prompt, and dispatch to agent").argument("[directory]", "Target directory", ".").option("--agent <agents...>", "Pre-select agent(s) to skip interactive selection").option("--skip-profile", "Use default profile (senior, high autonomy)").option("--no-dispatch", "Generate prompt file only, don't launch agent").option("--spec <path>", "Path to agentic-system-initializer.md").action(async (directory, options) => {
+var initCommand = new Command2("init").description("Analyze project, build profile, generate prompt, and dispatch to agent").argument("[directory]", "Target directory", ".").option("--agent <agents...>", "Pre-select agent(s) to skip interactive selection").option("--skip-profile", "Use default profile (senior, high autonomy)").option("--no-dispatch", "Generate prompt file only, don't launch agent").option("--spec <path>", "Path to agentic-system-initializer.md (uses CDN by default)").option("--offline", "Use cached/local sections only, skip CDN fetch").action(async (directory, options) => {
   p4.intro(chalk3.bgCyan(" agentinit "));
   const targetDir = directory === "." ? process.cwd() : directory;
   p4.log.step("Step 0: Analyzing project...");
@@ -648,10 +827,10 @@ var initCommand = new Command2("init").description("Analyze project, build profi
     p4.log.step("Step 0b: Building your developer profile...");
     profile = await collectProfile();
   }
-  const agentsDir = join4(targetDir, ".agents");
-  if (!existsSync4(agentsDir)) {
-    const { mkdirSync: mkdirSync2 } = await import("fs");
-    mkdirSync2(agentsDir, { recursive: true });
+  const agentsDir = join5(targetDir, ".agents");
+  if (!existsSync6(agentsDir)) {
+    const { mkdirSync: mkdirSync3 } = await import("fs");
+    mkdirSync3(agentsDir, { recursive: true });
   }
   saveProfile(targetDir, profile);
   let agents;
@@ -662,28 +841,23 @@ var initCommand = new Command2("init").description("Analyze project, build profi
   }
   p4.log.success(`Selected agent(s): ${agents.join(", ")}`);
   const specPath = options.spec ?? findSpecFile(targetDir);
-  if (!specPath || !existsSync4(specPath)) {
-    p4.log.error(
-      "Cannot find agentic-system-initializer.md. Use --spec to provide path."
-    );
-    p4.outro("");
-    return;
-  }
+  const useOffline = options.offline ?? false;
   for (const agent of agents) {
     p4.log.step(`Generating prompt for ${chalk3.bold(agent)}...`);
-    const prompt = generatePrompt({
-      specPath,
+    const prompt = await generatePrompt({
+      specPath: specPath ?? void 0,
       agent,
       profile,
-      analysis
+      analysis,
+      offline: useOffline
     });
     p4.log.success(`Prompt ready (${prompt.split("\n").length} lines)`);
     if (options.dispatch === false) {
-      const { writeFileSync: writeFileSync4, mkdirSync: mkdirSync2 } = await import("fs");
-      const tmpDir = join4(targetDir, ".agents", ".tmp");
-      if (!existsSync4(tmpDir)) mkdirSync2(tmpDir, { recursive: true });
-      const outFile = join4(tmpDir, `${agent}-init-prompt.md`);
-      writeFileSync4(outFile, prompt);
+      const { writeFileSync: writeFileSync5, mkdirSync: mkdirSync3 } = await import("fs");
+      const tmpDir = join5(targetDir, ".agents", ".tmp");
+      if (!existsSync6(tmpDir)) mkdirSync3(tmpDir, { recursive: true });
+      const outFile = join5(tmpDir, `${agent}-init-prompt.md`);
+      writeFileSync5(outFile, prompt);
       p4.log.info(`Written to: ${outFile}`);
       continue;
     }
@@ -697,11 +871,11 @@ var initCommand = new Command2("init").description("Analyze project, build profi
         p4.log.warn(result.message);
       }
     } else if (isIdeAgent(agent)) {
-      const { writeFileSync: writeFileSync4, mkdirSync: mkdirSync2 } = await import("fs");
-      const tmpDir = join4(targetDir, ".agents", ".tmp");
-      if (!existsSync4(tmpDir)) mkdirSync2(tmpDir, { recursive: true });
-      const outFile = join4(tmpDir, `${agent}-init-prompt.md`);
-      writeFileSync4(outFile, prompt);
+      const { writeFileSync: writeFileSync5, mkdirSync: mkdirSync3 } = await import("fs");
+      const tmpDir = join5(targetDir, ".agents", ".tmp");
+      if (!existsSync6(tmpDir)) mkdirSync3(tmpDir, { recursive: true });
+      const outFile = join5(tmpDir, `${agent}-init-prompt.md`);
+      writeFileSync5(outFile, prompt);
       const instruction = getDispatchInstructions(agent, outFile);
       p4.log.info(`${chalk3.dim("\u2192")} ${instruction}`);
     }
@@ -710,7 +884,7 @@ var initCommand = new Command2("init").description("Analyze project, build profi
     [
       `Agent(s): ${agents.join(", ")}`,
       `Profile: ${profile.role} / ${profile.domain} / autonomy=${profile.autonomy}`,
-      `Spec: ${specPath}`,
+      `Spec: ${specPath ?? "CDN (remote)"}`,
       "",
       "The agent will now:",
       "  1. Read your project structure",
@@ -725,9 +899,9 @@ var initCommand = new Command2("init").description("Analyze project, build profi
 function findSpecFile(startDir) {
   let dir = startDir;
   for (let i = 0; i < 5; i++) {
-    const candidate = join4(dir, "agentic-system-initializer.md");
-    if (existsSync4(candidate)) return candidate;
-    const parent = join4(dir, "..");
+    const candidate = join5(dir, "agentic-system-initializer.md");
+    if (existsSync6(candidate)) return candidate;
+    const parent = join5(dir, "..");
     if (parent === dir) break;
     dir = parent;
   }
@@ -751,8 +925,8 @@ function getDefaultProfile() {
 import { Command as Command3 } from "commander";
 import * as p5 from "@clack/prompts";
 import chalk4 from "chalk";
-import { existsSync as existsSync5, readFileSync as readFileSync5 } from "fs";
-import { join as join5 } from "path";
+import { existsSync as existsSync7, readFileSync as readFileSync6 } from "fs";
+import { join as join6 } from "path";
 import fg2 from "fast-glob";
 var AGENT_PATHS = {
   "claude-code": ["CLAUDE.md", ".claude/settings.json", ".claude/mcp.json"],
@@ -772,7 +946,7 @@ async function validate(targetDir, agents) {
   const sharedFiles = ["AGENTS.md", "how-to-use-skills.sh"];
   for (const file of sharedFiles) {
     total++;
-    if (existsSync5(join5(targetDir, file))) {
+    if (existsSync7(join6(targetDir, file))) {
       passed++;
     } else {
       issues.push(`Missing shared file: ${file}`);
@@ -784,7 +958,7 @@ async function validate(targetDir, agents) {
     if (!paths) continue;
     for (const filePath of paths) {
       total++;
-      if (existsSync5(join5(targetDir, filePath))) {
+      if (existsSync7(join6(targetDir, filePath))) {
         passed++;
       } else {
         issues.push(`Missing ${agent} file: ${filePath}`);
@@ -797,7 +971,7 @@ async function validate(targetDir, agents) {
     absolute: true
   });
   for (const file of mdFiles) {
-    const content = readFileSync5(file, "utf-8");
+    const content = readFileSync6(file, "utf-8");
     const placeholders = content.match(/<[a-z][a-z\s\-]*>/g);
     if (placeholders && placeholders.length > 0) {
       const relativePath = file.replace(targetDir + "/", "");
@@ -808,7 +982,7 @@ async function validate(targetDir, agents) {
     }
   }
   total++;
-  if (existsSync5(join5(targetDir, "skills-lock.json"))) {
+  if (existsSync7(join6(targetDir, "skills-lock.json"))) {
     passed++;
   } else {
     issues.push("skills-lock.json not found (run npx skills to generate)");
@@ -823,7 +997,7 @@ async function validate(targetDir, agents) {
     ".gemini/memory/decisions.md"
   ];
   total++;
-  const hasMemory = memoryPaths.some((p8) => existsSync5(join5(targetDir, p8)));
+  const hasMemory = memoryPaths.some((p8) => existsSync7(join6(targetDir, p8)));
   if (hasMemory) {
     passed++;
   } else {
@@ -833,16 +1007,16 @@ async function validate(targetDir, agents) {
 }
 function detectAgents(targetDir) {
   const detected = [];
-  if (existsSync5(join5(targetDir, ".claude"))) detected.push("claude-code");
-  if (existsSync5(join5(targetDir, ".cursor"))) detected.push("cursor");
-  if (existsSync5(join5(targetDir, ".codex"))) detected.push("codex");
-  if (existsSync5(join5(targetDir, ".github", "copilot-instructions.md")))
+  if (existsSync7(join6(targetDir, ".claude"))) detected.push("claude-code");
+  if (existsSync7(join6(targetDir, ".cursor"))) detected.push("cursor");
+  if (existsSync7(join6(targetDir, ".codex"))) detected.push("codex");
+  if (existsSync7(join6(targetDir, ".github", "copilot-instructions.md")))
     detected.push("copilot");
-  if (existsSync5(join5(targetDir, "GEMINI.md"))) detected.push("gemini-cli");
-  if (existsSync5(join5(targetDir, ".clinerules"))) detected.push("cline");
-  if (existsSync5(join5(targetDir, ".windsurf"))) detected.push("windsurf");
-  if (existsSync5(join5(targetDir, ".roo"))) detected.push("roo-code");
-  if (existsSync5(join5(targetDir, ".kilocode"))) detected.push("kilo-code");
+  if (existsSync7(join6(targetDir, "GEMINI.md"))) detected.push("gemini-cli");
+  if (existsSync7(join6(targetDir, ".clinerules"))) detected.push("cline");
+  if (existsSync7(join6(targetDir, ".windsurf"))) detected.push("windsurf");
+  if (existsSync7(join6(targetDir, ".roo"))) detected.push("roo-code");
+  if (existsSync7(join6(targetDir, ".kilocode"))) detected.push("kilo-code");
   return detected;
 }
 var validateCommand = new Command3("validate").description("Health-check: verify scaffold integrity, find unfilled placeholders").argument("[directory]", "Target directory", ".").action(async (directory) => {
@@ -872,9 +1046,9 @@ var validateCommand = new Command3("validate").description("Health-check: verify
 import { Command as Command4 } from "commander";
 import * as p6 from "@clack/prompts";
 import chalk5 from "chalk";
-import { writeFileSync as writeFileSync3, existsSync as existsSync6 } from "fs";
-import { join as join6, resolve } from "path";
-var generateCommand = new Command4("generate").description("Generate a slimmed-down initialization prompt and optionally dispatch to agent").option("-a, --agent <agent>", "Target agent (claude-code, cursor, copilot, etc.)").option("-o, --output <file>", "Output file (default: dispatch to agent)").option("--clipboard", "Copy to clipboard instead of dispatching").option("--no-dispatch", "Print to stdout instead of launching agent").option("--spec <path>", "Path to agentic-system-initializer.md").action(async (options) => {
+import { writeFileSync as writeFileSync4, existsSync as existsSync8 } from "fs";
+import { join as join7, resolve } from "path";
+var generateCommand = new Command4("generate").description("Generate a slimmed-down initialization prompt and optionally dispatch to agent").option("-a, --agent <agent>", "Target agent (claude-code, cursor, copilot, etc.)").option("-o, --output <file>", "Output file (default: dispatch to agent)").option("--clipboard", "Copy to clipboard instead of dispatching").option("--no-dispatch", "Print to stdout instead of launching agent").option("--spec <path>", "Path to agentic-system-initializer.md (uses CDN by default)").option("--offline", "Use cached/local sections only, skip CDN fetch").action(async (options) => {
   p6.intro(chalk5.bgCyan(" agentinit generate "));
   const targetDir = process.cwd();
   const profile = loadProfile(targetDir);
@@ -884,13 +1058,7 @@ var generateCommand = new Command4("generate").description("Generate a slimmed-d
     return;
   }
   const specPath = options.spec ?? findSpecFile2(targetDir);
-  if (!specPath || !existsSync6(specPath)) {
-    p6.log.error(
-      "Cannot find agentic-system-initializer.md. Use --spec to provide path."
-    );
-    p6.outro("");
-    return;
-  }
+  const useOffline = options.offline ?? false;
   let agent = options.agent;
   if (!agent) {
     const choice = await p6.select({
@@ -914,18 +1082,19 @@ var generateCommand = new Command4("generate").description("Generate a slimmed-d
   }
   const analysis = await analyzeProject(targetDir);
   const genOptions = {
-    specPath,
+    specPath: specPath ?? void 0,
     agent,
     profile,
-    analysis
+    analysis,
+    offline: useOffline
   };
   const spinner2 = p6.spinner();
   spinner2.start("Generating slimmed prompt...");
-  const result = generatePrompt(genOptions);
+  const result = await generatePrompt(genOptions);
   spinner2.stop("Prompt generated");
   if (options.output) {
     const outPath = resolve(options.output);
-    writeFileSync3(outPath, result);
+    writeFileSync4(outPath, result);
     p6.log.success(`Written to ${outPath} (${result.length} chars)`);
   } else if (options.clipboard) {
     try {
@@ -945,11 +1114,11 @@ var generateCommand = new Command4("generate").description("Generate a slimmed-d
       p6.log.warn(dispatchResult.message);
     }
   } else if (options.dispatch !== false) {
-    const { mkdirSync: mkdirSync2 } = await import("fs");
-    const tmpDir = join6(targetDir, ".agents", ".tmp");
-    if (!existsSync6(tmpDir)) mkdirSync2(tmpDir, { recursive: true });
-    const outFile = join6(tmpDir, `${agent}-init-prompt.md`);
-    writeFileSync3(outFile, result);
+    const { mkdirSync: mkdirSync3 } = await import("fs");
+    const tmpDir = join7(targetDir, ".agents", ".tmp");
+    if (!existsSync8(tmpDir)) mkdirSync3(tmpDir, { recursive: true });
+    const outFile = join7(tmpDir, `${agent}-init-prompt.md`);
+    writeFileSync4(outFile, result);
     const instruction = getDispatchInstructions(agent, outFile);
     p6.log.info(`${chalk5.dim("\u2192")} ${instruction}`);
   } else {
@@ -962,9 +1131,9 @@ var generateCommand = new Command4("generate").description("Generate a slimmed-d
 function findSpecFile2(startDir) {
   let dir = startDir;
   for (let i = 0; i < 5; i++) {
-    const candidate = join6(dir, "agentic-system-initializer.md");
-    if (existsSync6(candidate)) return candidate;
-    const parent = join6(dir, "..");
+    const candidate = join7(dir, "agentic-system-initializer.md");
+    if (existsSync8(candidate)) return candidate;
+    const parent = join7(dir, "..");
     if (parent === dir) break;
     dir = parent;
   }
@@ -975,8 +1144,8 @@ function findSpecFile2(startDir) {
 import { Command as Command5 } from "commander";
 import * as p7 from "@clack/prompts";
 import chalk6 from "chalk";
-import { existsSync as existsSync7, rmSync, readdirSync } from "fs";
-import { join as join7 } from "path";
+import { existsSync as existsSync9, rmSync, readdirSync } from "fs";
+import { join as join8 } from "path";
 var AGENT_GENERATED_PATHS = [
   // Shared
   ".agents",
@@ -1010,7 +1179,7 @@ var clearCommand = new Command5("clear").description("Remove all agentinit-gener
   p7.intro(chalk6.bgCyan(" agentinit clear "));
   const targetDir = directory === "." ? process.cwd() : directory;
   const existing = AGENT_GENERATED_PATHS.filter(
-    (p8) => existsSync7(join7(targetDir, p8))
+    (p8) => existsSync9(join8(targetDir, p8))
   );
   if (existing.length === 0) {
     p7.log.info("Nothing to clear \u2014 no agentinit-generated files found.");
@@ -1033,7 +1202,7 @@ var clearCommand = new Command5("clear").description("Remove all agentinit-gener
   }
   let removed = 0;
   for (const item of existing) {
-    const fullPath = join7(targetDir, item);
+    const fullPath = join8(targetDir, item);
     try {
       rmSync(fullPath, { recursive: true, force: true });
       removed++;
@@ -1042,8 +1211,8 @@ var clearCommand = new Command5("clear").description("Remove all agentinit-gener
     }
   }
   for (const dir of AGENT_DIRS_CLEANUP) {
-    const fullPath = join7(targetDir, dir);
-    if (existsSync7(fullPath)) {
+    const fullPath = join8(targetDir, dir);
+    if (existsSync9(fullPath)) {
       try {
         const contents = readdirSync(fullPath);
         if (contents.length === 0) {
