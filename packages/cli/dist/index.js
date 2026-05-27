@@ -350,7 +350,7 @@ import { readFileSync as readFileSync4, existsSync as existsSync4 } from "fs";
 
 // src/config.ts
 var CDN_DEFAULTS = {
-  baseUrl: "https://agentinit.azureedge.net/agentinit",
+  baseUrl: "https://deopagentinit.blob.core.windows.net/agentinit",
   cacheDir: ".agentinit/cache",
   timeout: 1e4,
   retries: 2
@@ -972,7 +972,7 @@ async function validate(targetDir, agents) {
   });
   for (const file of mdFiles) {
     const content = readFileSync6(file, "utf-8");
-    const placeholders = content.match(/<[a-z][a-z\s\-]*>/g);
+    const placeholders = content.match(/<[a-z][a-z\s-]*>/g);
     if (placeholders && placeholders.length > 0) {
       const relativePath = file.replace(targetDir + "/", "");
       const unique = [...new Set(placeholders)].slice(0, 3);

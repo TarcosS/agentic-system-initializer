@@ -7,14 +7,14 @@
 
 ## User profile
 
-- **Role:** Cloud Native Engineer
+- **Role:** senior
 - **Domain expertise:** fullstack
 - **Strongest with:** not specified yet — infer from code patterns
-- **Working style:** code-first
-- **Autonomy preference:** medium — confirm non-trivial decisions (new deps, file creation, architecture choices); skip confirmation for obvious one-liners
+- **Working style:** mixed — use spec-first for complex features, code-first for straightforward work
+- **Autonomy preference:** high — make obvious decisions without asking; only ask on genuine ambiguity
 - **Review strictness:** balanced — flag blockers and concerns; skip pure nits
 - **Security stance:** standard — apply OWASP basics; flag auth/secrets/input-handling code
-- **Communication:** detailed — explain trade-offs, keep prose tight
+- **Communication:** concise — terse responses, skip obvious explanations, surface trade-offs directly
 - **Language preference:** discussion: English; code: English
 
 **Known preferences:**
@@ -181,10 +181,10 @@ Dispatch to a sub-agent when:
 - Implementer → Reviewer: auto-chain for any change >50 LOC or touching auth/data/config paths.
 - Any agent → Reviewer: auto-trigger security review for any change adding new dependencies.
 
-**Adapt to user profile (medium autonomy + balanced review):**
-- Confirm before dispatching specialists for new architectural directions.
-- Auto-chain Implementer → Reviewer for >50 LOC diffs without asking.
+**Adapt to user profile (high autonomy + balanced review):**
+- Chain Implementer → Reviewer automatically without asking.
 - Skip reviewer for trivial one-liners.
+- Make obvious decisions without confirmation; only ask on genuine ambiguity.
 
 ---
 

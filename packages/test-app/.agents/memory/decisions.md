@@ -6,6 +6,14 @@
 
 ---
 
+## 2026-05-26 — User profile updated to senior/high-autonomy/concise
+
+Context: Re-initialization requested with updated user profile. Previous profile was "Cloud Native Engineer / medium autonomy / detailed communication / code-first". New profile is "senior / high autonomy / concise / mixed working style".
+
+Decision: Updated `.github/copilot-instructions.md` user profile section. Agent now makes obvious decisions without asking, uses terse responses, and supports both spec-first (complex) and code-first (simple) workflows. Installed `nextjs-app-router-patterns` skill (19K installs) for App Router guidance.
+
+---
+
 ## 2026-05-19 — GitHub Copilot instructions scaffolded
 
 Context: Added GitHub Copilot as a second supported agent platform alongside Claude Code. Created `.github/copilot-instructions.md` (repo-wide, all canonical blocks A.0–A.13 inlined) and path-scoped rules under `.github/instructions/` (architecture, testing, security, data, workflows).

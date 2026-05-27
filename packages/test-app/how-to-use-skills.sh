@@ -33,8 +33,10 @@ npx skills add <repo> -a github-copilot       # force install location for GitHu
 npx skills add <repo> -a cursor               # ...or Cursor, etc.
 
 # Where skills live in this repo
-#   .claude/skills/      — project-scoped, committed
-#   ~/.claude/skills/    — personal-scoped, not committed
+#   .agents/skills/      — project-scoped, committed (GitHub Copilot + agent-neutral)
+#   .claude/skills/      — project-scoped, committed (Claude Code)
+#   ~/.copilot/skills/   — personal-scoped, not committed (GitHub Copilot)
+#   ~/.claude/skills/    — personal-scoped, not committed (Claude Code)
 
 # Always-on skills (loaded mentally each session, per CLAUDE.md):
 #   - context-hygiene

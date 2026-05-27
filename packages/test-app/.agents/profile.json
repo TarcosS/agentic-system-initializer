@@ -1,11 +1,11 @@
 {
-  "role": "Cloud Native Engineer",
+  "role": "senior",
   "domain": "fullstack",
   "expertise": [],
-  "workingStyle": "code-first",
-  "autonomy": "medium",
+  "workingStyle": "mixed",
+  "autonomy": "high",
   "reviewStrictness": "balanced",
   "securityStance": "standard",
-  "communication": "detailed",
+  "communication": "concise",
   "preferences": []
 }
