@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 // src/index.ts
-import { Command as Command6 } from "commander";
+import { Command as Command7 } from "commander";
 
 // src/commands/init.ts
 import { Command as Command2 } from "commander";
@@ -519,9 +519,9 @@ async function resolveContent(options) {
       "agentic-system-initializer.md",
       "../agentic-system-initializer.md"
     ];
-    for (const p8 of fallbackPaths) {
-      if (existsSync4(p8)) {
-        const spec = readFileSync4(p8, "utf-8");
+    for (const p9 of fallbackPaths) {
+      if (existsSync4(p9)) {
+        const spec = readFileSync4(p9, "utf-8");
         const lines = spec.split("\n");
         return {
           agentSection: extractAgentSection(lines, agent),
@@ -735,7 +735,7 @@ async function dispatchToAgent(agent, prompt, cwd) {
     p3.log.info(`Running: ${config.command} ${args.join(" ").length > 200 ? args[0] + " ..." : args.join(" ")}`);
   }
   p3.log.info(chalk2.dim("Agent output will appear below. This may take a while...\n"));
-  return new Promise((resolve2) => {
+  return new Promise((resolve3) => {
     const child = spawn(config.command, args, {
       cwd,
       stdio: config.useStdinPipe ? ["pipe", "inherit", "inherit"] : ["inherit", "inherit", "inherit"],
@@ -748,13 +748,13 @@ async function dispatchToAgent(agent, prompt, cwd) {
     }
     child.on("close", (code) => {
       if (code === 0) {
-        resolve2({
+        resolve3({
           success: true,
           method: "cli",
           message: `${agent} completed successfully`
         });
       } else {
-        resolve2({
+        resolve3({
           success: false,
           method: "cli",
           message: `${agent} exited with code ${code}`
@@ -762,7 +762,7 @@ async function dispatchToAgent(agent, prompt, cwd) {
       }
     });
     child.on("error", (err) => {
-      resolve2({
+      resolve3({
         success: false,
         method: "cli",
         message: `Failed to launch ${config.command}: ${err.message}`
@@ -829,8 +829,8 @@ var initCommand = new Command2("init").description("Analyze project, build profi
   }
   const agentsDir = join5(targetDir, ".agents");
   if (!existsSync6(agentsDir)) {
-    const { mkdirSync: mkdirSync3 } = await import("fs");
-    mkdirSync3(agentsDir, { recursive: true });
+    const { mkdirSync: mkdirSync4 } = await import("fs");
+    mkdirSync4(agentsDir, { recursive: true });
   }
   saveProfile(targetDir, profile);
   let agents;
@@ -853,11 +853,11 @@ var initCommand = new Command2("init").description("Analyze project, build profi
     });
     p4.log.success(`Prompt ready (${prompt.split("\n").length} lines)`);
     if (options.dispatch === false) {
-      const { writeFileSync: writeFileSync5, mkdirSync: mkdirSync3 } = await import("fs");
+      const { writeFileSync: writeFileSync6, mkdirSync: mkdirSync4 } = await import("fs");
       const tmpDir = join5(targetDir, ".agents", ".tmp");
-      if (!existsSync6(tmpDir)) mkdirSync3(tmpDir, { recursive: true });
+      if (!existsSync6(tmpDir)) mkdirSync4(tmpDir, { recursive: true });
       const outFile = join5(tmpDir, `${agent}-init-prompt.md`);
-      writeFileSync5(outFile, prompt);
+      writeFileSync6(outFile, prompt);
       p4.log.info(`Written to: ${outFile}`);
       continue;
     }
@@ -871,11 +871,11 @@ var initCommand = new Command2("init").description("Analyze project, build profi
         p4.log.warn(result.message);
       }
     } else if (isIdeAgent(agent)) {
-      const { writeFileSync: writeFileSync5, mkdirSync: mkdirSync3 } = await import("fs");
+      const { writeFileSync: writeFileSync6, mkdirSync: mkdirSync4 } = await import("fs");
       const tmpDir = join5(targetDir, ".agents", ".tmp");
-      if (!existsSync6(tmpDir)) mkdirSync3(tmpDir, { recursive: true });
+      if (!existsSync6(tmpDir)) mkdirSync4(tmpDir, { recursive: true });
       const outFile = join5(tmpDir, `${agent}-init-prompt.md`);
-      writeFileSync5(outFile, prompt);
+      writeFileSync6(outFile, prompt);
       const instruction = getDispatchInstructions(agent, outFile);
       p4.log.info(`${chalk3.dim("\u2192")} ${instruction}`);
     }
@@ -997,7 +997,7 @@ async function validate(targetDir, agents) {
     ".gemini/memory/decisions.md"
   ];
   total++;
-  const hasMemory = memoryPaths.some((p8) => existsSync7(join6(targetDir, p8)));
+  const hasMemory = memoryPaths.some((p9) => existsSync7(join6(targetDir, p9)));
   if (hasMemory) {
     passed++;
   } else {
@@ -1114,9 +1114,9 @@ var generateCommand = new Command4("generate").description("Generate a slimmed-d
       p6.log.warn(dispatchResult.message);
     }
   } else if (options.dispatch !== false) {
-    const { mkdirSync: mkdirSync3 } = await import("fs");
+    const { mkdirSync: mkdirSync4 } = await import("fs");
     const tmpDir = join7(targetDir, ".agents", ".tmp");
-    if (!existsSync8(tmpDir)) mkdirSync3(tmpDir, { recursive: true });
+    if (!existsSync8(tmpDir)) mkdirSync4(tmpDir, { recursive: true });
     const outFile = join7(tmpDir, `${agent}-init-prompt.md`);
     writeFileSync4(outFile, result);
     const instruction = getDispatchInstructions(agent, outFile);
@@ -1179,7 +1179,7 @@ var clearCommand = new Command5("clear").description("Remove all agentinit-gener
   p7.intro(chalk6.bgCyan(" agentinit clear "));
   const targetDir = directory === "." ? process.cwd() : directory;
   const existing = AGENT_GENERATED_PATHS.filter(
-    (p8) => existsSync9(join8(targetDir, p8))
+    (p9) => existsSync9(join8(targetDir, p9))
   );
   if (existing.length === 0) {
     p7.log.info("Nothing to clear \u2014 no agentinit-generated files found.");
@@ -1226,8 +1226,520 @@ var clearCommand = new Command5("clear").description("Remove all agentinit-gener
   p7.outro("Project cleared. Run `agentinit init` to start fresh.");
 });
 
+// src/commands/rules.ts
+import { Command as Command6 } from "commander";
+import * as p8 from "@clack/prompts";
+import chalk7 from "chalk";
+import { existsSync as existsSync11, mkdirSync as mkdirSync3, readFileSync as readFileSync8, readdirSync as readdirSync3, writeFileSync as writeFileSync5 } from "fs";
+import { join as join10, basename as basename3, resolve as resolve2 } from "path";
+
+// src/rules/schema.ts
+import matter from "gray-matter";
+var VALID_IMPACTS = ["CRITICAL", "HIGH", "MEDIUM", "LOW"];
+var VALID_CATEGORIES = [
+  "architecture",
+  "testing",
+  "security",
+  "api",
+  "performance",
+  "workflow",
+  "coding-standards",
+  "git",
+  "dependencies"
+];
+var RuleParseError = class extends Error {
+  constructor(message, slug) {
+    super(`Rule "${slug}": ${message}`);
+    this.slug = slug;
+    this.name = "RuleParseError";
+  }
+  slug;
+};
+function parseRule(raw, slug, builtin = false) {
+  const { data, content } = matter(raw);
+  if (!data.title || typeof data.title !== "string") {
+    throw new RuleParseError("Missing required 'title' in frontmatter", slug);
+  }
+  if (data.impact && !VALID_IMPACTS.includes(data.impact)) {
+    throw new RuleParseError(
+      `Invalid impact "${data.impact}". Must be one of: ${VALID_IMPACTS.join(", ")}`,
+      slug
+    );
+  }
+  if (data.category && !VALID_CATEGORIES.includes(data.category)) {
+    throw new RuleParseError(
+      `Invalid category "${data.category}". Must be one of: ${VALID_CATEGORIES.join(", ")}`,
+      slug
+    );
+  }
+  const meta = {
+    title: data.title,
+    impact: data.impact ?? void 0,
+    tags: Array.isArray(data.tags) ? data.tags.map(String) : void 0,
+    globs: Array.isArray(data.globs) ? data.globs.map(String) : void 0,
+    alwaysApply: typeof data.alwaysApply === "boolean" ? data.alwaysApply : false,
+    category: data.category ?? void 0
+  };
+  return { meta, body: content.trim(), slug, builtin };
+}
+
+// src/rules/adapters/cursor-adapter.ts
+var cursorAdapter = {
+  agentId: "cursor",
+  compile(rule, index) {
+    const slug = rule.slug;
+    const path = `.cursor/rules/${String(index).padStart(2, "0")}-${slug}.mdc`;
+    const fmLines = ["---"];
+    fmLines.push(`description: "${rule.meta.title}"`);
+    if (rule.meta.alwaysApply) {
+      fmLines.push("alwaysApply: true");
+    } else if (rule.meta.globs?.length) {
+      const globStr = rule.meta.globs.map((g) => `"${g}"`).join(", ");
+      fmLines.push(`globs: [${globStr}]`);
+    }
+    fmLines.push("---");
+    const content = [fmLines.join("\n"), "", rule.body].join("\n");
+    return { path, content };
+  }
+};
+
+// src/rules/adapters/claude-adapter.ts
+var claudeAdapter = {
+  agentId: "claude-code",
+  compile(rule, index) {
+    const slug = rule.slug;
+    const path = `.claude/rules/${String(index).padStart(2, "0")}-${slug}.md`;
+    const lines = [];
+    lines.push(`# ${rule.meta.title}`);
+    if (rule.meta.impact) {
+      lines.push(`
+**Impact: ${rule.meta.impact}**`);
+    }
+    if (rule.meta.globs?.length) {
+      lines.push(`
+**Applies to:** ${rule.meta.globs.join(", ")}`);
+    }
+    lines.push("");
+    lines.push(rule.body);
+    return { path, content: lines.join("\n") };
+  }
+};
+
+// src/rules/adapters/copilot-adapter.ts
+var copilotAdapter = {
+  agentId: "copilot",
+  compile(rule, _index) {
+    const slug = rule.slug;
+    const path = `.github/instructions/${slug}.instructions.md`;
+    const lines = ["---"];
+    if (rule.meta.globs?.length) {
+      lines.push(`applyTo: "${rule.meta.globs.join(",")}"`);
+    } else {
+      lines.push('applyTo: "**"');
+    }
+    lines.push("---");
+    lines.push("");
+    lines.push(`# ${rule.meta.title}`);
+    if (rule.meta.impact) {
+      lines.push(`
+**Impact: ${rule.meta.impact}**`);
+    }
+    lines.push("");
+    lines.push(rule.body);
+    return { path, content: lines.join("\n") };
+  }
+};
+
+// src/rules/adapters/cline-adapter.ts
+var clineAdapter = {
+  agentId: "cline",
+  compile(rule, index) {
+    const slug = rule.slug;
+    const path = `.clinerules/${String(index).padStart(2, "0")}-${slug}.md`;
+    const lines = [];
+    lines.push(`# ${rule.meta.title}`);
+    if (rule.meta.impact) {
+      lines.push(`
+**Impact: ${rule.meta.impact}**`);
+    }
+    if (rule.meta.globs?.length) {
+      lines.push(`
+**Applies to:** ${rule.meta.globs.join(", ")}`);
+    }
+    lines.push("");
+    lines.push(rule.body);
+    return { path, content: lines.join("\n") };
+  }
+};
+
+// src/rules/adapters/windsurf-adapter.ts
+var windsurfAdapter = {
+  agentId: "windsurf",
+  compile(rule, index) {
+    const slug = rule.slug;
+    const path = `.windsurf/rules/${String(index).padStart(2, "0")}-${slug}.md`;
+    const lines = [];
+    lines.push(`# ${rule.meta.title}`);
+    if (rule.meta.impact) {
+      lines.push(`
+**Impact: ${rule.meta.impact}**`);
+    }
+    if (rule.meta.globs?.length) {
+      lines.push(`
+**Applies to:** ${rule.meta.globs.join(", ")}`);
+    }
+    lines.push("");
+    lines.push(rule.body);
+    return { path, content: lines.join("\n") };
+  }
+};
+
+// src/rules/adapters/roo-adapter.ts
+var rooAdapter = {
+  agentId: "roo-code",
+  compile(rule, index) {
+    const slug = rule.slug;
+    const path = `.roo/rules/${String(index).padStart(2, "0")}-${slug}.md`;
+    const lines = [];
+    lines.push(`# ${rule.meta.title}`);
+    if (rule.meta.impact) {
+      lines.push(`
+**Impact: ${rule.meta.impact}**`);
+    }
+    if (rule.meta.globs?.length) {
+      lines.push(`
+**Applies to:** ${rule.meta.globs.join(", ")}`);
+    }
+    lines.push("");
+    lines.push(rule.body);
+    return { path, content: lines.join("\n") };
+  }
+};
+
+// src/rules/adapters/kilo-adapter.ts
+var kiloAdapter = {
+  agentId: "kilo-code",
+  compile(rule, index) {
+    const slug = rule.slug;
+    const path = `.kilocode/rules/${String(index).padStart(2, "0")}-${slug}.md`;
+    const lines = [];
+    lines.push(`# ${rule.meta.title}`);
+    if (rule.meta.impact) {
+      lines.push(`
+**Impact: ${rule.meta.impact}**`);
+    }
+    if (rule.meta.globs?.length) {
+      lines.push(`
+**Applies to:** ${rule.meta.globs.join(", ")}`);
+    }
+    lines.push("");
+    lines.push(rule.body);
+    return { path, content: lines.join("\n") };
+  }
+};
+
+// src/rules/adapters/gemini-adapter.ts
+var geminiAdapter = {
+  agentId: "gemini-cli",
+  compile(rule, index) {
+    const slug = rule.slug;
+    const path = `.gemini/rules/${String(index).padStart(2, "0")}-${slug}.md`;
+    const lines = [];
+    lines.push(`# ${rule.meta.title}`);
+    if (rule.meta.impact) {
+      lines.push(`
+**Impact: ${rule.meta.impact}**`);
+    }
+    if (rule.meta.globs?.length) {
+      lines.push(`
+**Applies to:** ${rule.meta.globs.join(", ")}`);
+    }
+    lines.push("");
+    lines.push(rule.body);
+    return { path, content: lines.join("\n") };
+  }
+};
+
+// src/rules/adapters/generic-adapter.ts
+var genericAdapter = {
+  agentId: "generic",
+  compile(rule, index) {
+    const slug = rule.slug;
+    const path = `.agents/rules/compiled/${String(index).padStart(2, "0")}-${slug}.md`;
+    const lines = [];
+    lines.push(`# ${rule.meta.title}`);
+    if (rule.meta.impact) {
+      lines.push(`
+**Impact: ${rule.meta.impact}**`);
+    }
+    if (rule.meta.globs?.length) {
+      lines.push(`
+**Applies to:** ${rule.meta.globs.join(", ")}`);
+    }
+    lines.push("");
+    lines.push(rule.body);
+    return { path, content: lines.join("\n") };
+  }
+};
+
+// src/rules/compiler.ts
+var adapters = {
+  "claude-code": claudeAdapter,
+  cursor: cursorAdapter,
+  copilot: copilotAdapter,
+  cline: clineAdapter,
+  windsurf: windsurfAdapter,
+  "roo-code": rooAdapter,
+  "kilo-code": kiloAdapter,
+  "gemini-cli": geminiAdapter,
+  codex: genericAdapter,
+  aider: genericAdapter,
+  generic: genericAdapter
+};
+function compileRule(rule, agent, index = 0) {
+  const adapter = adapters[agent];
+  if (!adapter) {
+    throw new Error(`No adapter registered for agent: ${agent}`);
+  }
+  return adapter.compile(rule, index);
+}
+function compileRules(rules, agent, startIndex = 60) {
+  return rules.map((rule, i) => compileRule(rule, agent, startIndex + i * 10));
+}
+
+// src/rules/loader.ts
+import { readFileSync as readFileSync7, readdirSync as readdirSync2, existsSync as existsSync10 } from "fs";
+import { join as join9, basename as basename2, dirname } from "path";
+import { fileURLToPath } from "url";
+var __filename = fileURLToPath(import.meta.url);
+var __dirnamePath = dirname(__filename);
+function getBuiltinDir() {
+  const bundled = join9(__dirnamePath, "rules", "builtin");
+  if (existsSync10(bundled)) return bundled;
+  const dev = join9(__dirnamePath, "builtin");
+  if (existsSync10(dev)) return dev;
+  const src = join9(__dirnamePath, "..", "rules", "builtin");
+  if (existsSync10(src)) return src;
+  return bundled;
+}
+var BUILTIN_RULE_SLUGS = [
+  "api-stability",
+  "no-secrets-in-code",
+  "test-before-commit",
+  "smallest-viable-change",
+  "match-existing-patterns",
+  "no-force-push",
+  "dependency-approval",
+  "error-handling-standards"
+];
+function loadBuiltinRules() {
+  const rules = [];
+  const builtinDir = getBuiltinDir();
+  if (!existsSync10(builtinDir)) return rules;
+  for (const file of readdirSync2(builtinDir)) {
+    if (!file.endsWith(".md")) continue;
+    const slug = basename2(file, ".md");
+    const raw = readFileSync7(join9(builtinDir, file), "utf-8");
+    rules.push(parseRule(raw, slug, true));
+  }
+  return rules;
+}
+function getBuiltinRuleContent(slug) {
+  const builtinDir = getBuiltinDir();
+  const filePath = join9(builtinDir, `${slug}.md`);
+  try {
+    return readFileSync7(filePath, "utf-8");
+  } catch {
+    return void 0;
+  }
+}
+
+// src/commands/rules.ts
+var RULES_DIR = ".agents/rules";
+var CUSTOM_DIR = join10(RULES_DIR, "custom");
+function ensureDir(dir) {
+  if (!existsSync11(dir)) mkdirSync3(dir, { recursive: true });
+}
+function loadProjectRules(targetDir) {
+  const rules = [];
+  const customDir = join10(targetDir, CUSTOM_DIR);
+  const builtinDir = join10(targetDir, RULES_DIR, "builtin");
+  for (const dir of [builtinDir, customDir]) {
+    if (!existsSync11(dir)) continue;
+    for (const file of readdirSync3(dir)) {
+      if (!file.endsWith(".md")) continue;
+      const slug = basename3(file, ".md");
+      const raw = readFileSync8(join10(dir, file), "utf-8");
+      try {
+        rules.push(parseRule(raw, slug, dir === builtinDir));
+      } catch (err) {
+        p8.log.warn(`Skipping invalid rule ${file}: ${err}`);
+      }
+    }
+  }
+  return rules;
+}
+function detectAgents2(targetDir) {
+  const agents = [];
+  const checks = [
+    ["CLAUDE.md", "claude-code"],
+    [".cursor/rules", "cursor"],
+    [".github/copilot-instructions.md", "copilot"],
+    [".clinerules", "cline"],
+    [".windsurf/rules", "windsurf"],
+    [".roo/rules", "roo-code"],
+    [".kilocode/rules", "kilo-code"],
+    ["GEMINI.md", "gemini-cli"],
+    ["AGENTS.md", "codex"]
+  ];
+  for (const [path, agent] of checks) {
+    if (existsSync11(join10(targetDir, path))) agents.push(agent);
+  }
+  return agents;
+}
+var addCommand = new Command6("add").description("Add a rule to the project").argument("[name]", "Built-in rule slug or path to custom rule file").option("--all", "Add all built-in rules").action(async (name, options) => {
+  const targetDir = process.cwd();
+  if (options.all) {
+    const builtinDir = join10(targetDir, RULES_DIR, "builtin");
+    ensureDir(builtinDir);
+    const builtins = loadBuiltinRules();
+    for (const rule of builtins) {
+      const dest = join10(builtinDir, `${rule.slug}.md`);
+      if (existsSync11(dest)) {
+        p8.log.warn(`  \u2298 ${rule.slug} (already exists)`);
+        continue;
+      }
+      const content = getBuiltinRuleContent(rule.slug);
+      if (!content) continue;
+      writeFileSync5(dest, content);
+      p8.log.success(`  \u2713 ${rule.slug}`);
+    }
+    p8.log.info(`Added ${builtins.length} built-in rules to ${RULES_DIR}/builtin/`);
+    return;
+  }
+  if (!name) {
+    const builtins = loadBuiltinRules();
+    const choices = builtins.map((r) => ({
+      value: r.slug,
+      label: `${r.slug} \u2014 ${r.meta.title}`,
+      hint: r.meta.impact ? `Impact: ${r.meta.impact}` : void 0
+    }));
+    const selected = await p8.multiselect({
+      message: "Select rules to add:",
+      options: choices
+    });
+    if (p8.isCancel(selected)) {
+      p8.cancel("Cancelled");
+      process.exit(0);
+    }
+    const builtinDir = join10(targetDir, RULES_DIR, "builtin");
+    ensureDir(builtinDir);
+    for (const slug of selected) {
+      const content = getBuiltinRuleContent(slug);
+      if (!content) continue;
+      const dest = join10(builtinDir, `${slug}.md`);
+      writeFileSync5(dest, content);
+      p8.log.success(`  \u2713 ${slug}`);
+    }
+    return;
+  }
+  if (BUILTIN_RULE_SLUGS.includes(name)) {
+    const builtinDir = join10(targetDir, RULES_DIR, "builtin");
+    ensureDir(builtinDir);
+    const dest = join10(builtinDir, `${name}.md`);
+    if (existsSync11(dest)) {
+      p8.log.warn(`Rule "${name}" already exists`);
+      return;
+    }
+    const content = getBuiltinRuleContent(name);
+    if (!content) {
+      p8.log.error(`Could not load built-in rule: ${name}`);
+      return;
+    }
+    writeFileSync5(dest, content);
+    p8.log.success(`Added built-in rule: ${name}`);
+    return;
+  }
+  const filePath = resolve2(name);
+  if (existsSync11(filePath) && filePath.endsWith(".md")) {
+    const customDir = join10(targetDir, CUSTOM_DIR);
+    ensureDir(customDir);
+    const slug = basename3(filePath, ".md");
+    const raw = readFileSync8(filePath, "utf-8");
+    parseRule(raw, slug);
+    const dest = join10(customDir, `${slug}.md`);
+    writeFileSync5(dest, raw);
+    p8.log.success(`Added custom rule: ${slug}`);
+    return;
+  }
+  p8.log.error(`Unknown rule: "${name}". Use a built-in slug or path to a .md file.`);
+  p8.log.info(`Available built-in rules: ${BUILTIN_RULE_SLUGS.join(", ")}`);
+});
+var listCommand = new Command6("list").description("List all rules in the project").action(async () => {
+  const targetDir = process.cwd();
+  const rules = loadProjectRules(targetDir);
+  if (rules.length === 0) {
+    p8.log.info("No rules found. Use `agentinit rules add` to add rules.");
+    return;
+  }
+  p8.log.info(chalk7.bold(`
+  Rules (${rules.length}):
+`));
+  for (const rule of rules) {
+    const impact = rule.meta.impact ? chalk7.yellow(`[${rule.meta.impact}]`) : chalk7.gray("[\u2014]");
+    const type = rule.builtin ? chalk7.blue("builtin") : chalk7.green("custom");
+    const globs = rule.meta.globs?.length ? chalk7.gray(` (${rule.meta.globs.join(", ")})`) : "";
+    const always = rule.meta.alwaysApply ? chalk7.cyan(" \u2605") : "";
+    console.log(`  ${impact} ${rule.meta.title} ${type}${globs}${always}`);
+  }
+  console.log();
+});
+var compileCommand = new Command6("compile").description("Compile rules to agent-specific formats").option("--agent <agents...>", "Target specific agents (auto-detects if omitted)").option("--dry-run", "Show what would be written without writing").action(async (options) => {
+  const targetDir = process.cwd();
+  const rules = loadProjectRules(targetDir);
+  if (rules.length === 0) {
+    p8.log.warn("No rules found. Use `agentinit rules add` first.");
+    return;
+  }
+  let agents;
+  if (options.agent) {
+    agents = options.agent;
+  } else {
+    agents = detectAgents2(targetDir);
+    if (agents.length === 0) {
+      p8.log.warn(
+        "No agent configurations detected. Use --agent to specify targets."
+      );
+      return;
+    }
+  }
+  p8.log.info(
+    `Compiling ${rules.length} rule(s) for: ${agents.join(", ")}`
+  );
+  let totalWritten = 0;
+  for (const agent of agents) {
+    const compiled = compileRules(rules, agent);
+    p8.log.step(chalk7.bold(`  ${agent} (${compiled.length} files)`));
+    for (const file of compiled) {
+      const fullPath = join10(targetDir, file.path);
+      if (options.dryRun) {
+        console.log(`    \u2192 ${file.path}`);
+        continue;
+      }
+      ensureDir(join10(fullPath, ".."));
+      writeFileSync5(fullPath, file.content);
+      console.log(`    \u2713 ${file.path}`);
+      totalWritten++;
+    }
+  }
+  if (!options.dryRun) {
+    p8.log.success(`Compiled ${totalWritten} rule file(s)`);
+  }
+});
+var rulesCommand = new Command6("rules").description("Manage project rules (add, list, compile)").addCommand(addCommand).addCommand(listCommand).addCommand(compileCommand);
+
 // src/index.ts
-var program = new Command6();
+var program = new Command7();
 program.name("agentinit").description(
   "Initialize AI coding agent configurations \u2014 compile agentic-system-initializer into targeted, user-profiled scaffolds"
 ).version("0.1.0");
@@ -1236,4 +1748,5 @@ program.addCommand(profileCommand);
 program.addCommand(validateCommand);
 program.addCommand(generateCommand);
 program.addCommand(clearCommand);
+program.addCommand(rulesCommand);
 program.parse();

@@ -6,6 +6,7 @@ import { profileCommand } from "./commands/profile.js";
 import { validateCommand } from "./commands/validate.js";
 import { generateCommand } from "./commands/generate.js";
 import { clearCommand } from "./commands/clear.js";
+import { rulesCommand } from "./commands/rules.js";
 
 const program = new Command();
 
@@ -21,5 +22,6 @@ program.addCommand(profileCommand);
 program.addCommand(validateCommand);
 program.addCommand(generateCommand);
 program.addCommand(clearCommand);
+program.addCommand(rulesCommand);
 
 program.parse();
