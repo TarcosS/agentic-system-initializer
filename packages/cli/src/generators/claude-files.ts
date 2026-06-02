@@ -41,9 +41,10 @@ export function generateClaudeFiles(
 ): ClaudeFilesResult {
   const result: ClaudeFilesResult = { created: [], skipped: [] };
   const claude = (p: string) => join(targetDir, ".claude", p);
+  const packageScripts = readPackageScripts(targetDir);
 
   // --- settings.json ---
-  writeIfNew(claude("settings.json"), buildSettingsJson(profile, analysis), result);
+  writeIfNew(claude("settings.json"), buildSettingsJson(profile, analysis, packageScripts), result);
 
   // --- mcp.json ---
   writeIfNew(claude("mcp.json"), buildMcpJson(analysis), result);
@@ -53,7 +54,6 @@ export function generateClaudeFiles(
 
   // --- commands/boot.md ---
   writeIfNew(claude("commands/boot.md"), BOOT_COMMAND, result);
-  const packageScripts = readPackageScripts(targetDir);
   writeIfNew(claude("commands/verify.md"), buildVerifyCommand(analysis, packageScripts), result);
   writeIfNew(claude("commands/code-review.md"), CODE_REVIEW_COMMAND, result);
 
@@ -354,16 +354,71 @@ tools: [Read, Write, Edit, Bash, Grep, Glob]
 
 // ── Builders ──────────────────────────────────────────────────
 
-function buildSettingsJson(profile: UserProfile, analysis: ProjectAnalysis): string {
+function buildSettingsJson(
+  profile: UserProfile,
+  analysis: ProjectAnalysis,
+  scripts: Record<string, string>,
+): string {
   const deny = ["Bash(rm -rf:*)", "Bash(git push --force:*)"];
   if (profile.securityStance === "paranoid") {
     deny.push("Bash(git push --force-with-lease:*)", "Bash(chmod 777:*)");
   }
   const allow = buildAllowList(analysis);
+  const hooks = buildHooks(analysis, scripts);
   return JSON.stringify({
     $schema: "https://json.schemastore.org/claude-code-settings.json",
     permissions: { allow, deny },
+    ...(hooks ? { hooks } : {}),
   }, null, 2);
+}
+
+interface HookCommand { type: "command"; command: string }
+interface HookGroup { matcher: string; hooks: HookCommand[] }
+
+/**
+ * Stack-driven hook configuration. We only emit hooks whose underlying command
+ * is actually wired up (e.g., `scripts.typecheck` exists) so the user doesn't
+ * end up with a turn-blocking Stop hook that runs a command they never set up.
+ *
+ *  - Stop hook → run typecheck after every turn (best practice: deterministic
+ *    verification gate; agent loops until it passes).
+ *  - PostToolUse hook → run lint --fix after Edit/Write/MultiEdit (best practice:
+ *    "Write a hook that runs eslint after every file edit").
+ *
+ * Returns undefined when nothing is wired up so settings.json doesn't carry an
+ * empty hooks block.
+ */
+function buildHooks(
+  analysis: ProjectAnalysis,
+  scripts: Record<string, string>,
+): Record<string, HookGroup[]> | undefined {
+  const stopCmds: string[] = [];
+  const editCmds: string[] = [];
+
+  const isNode = analysis.languages.some((l) => l === "TypeScript" || l === "JavaScript");
+  if (isNode) {
+    const pm = analysis.packageManager;
+    const runner = pm === "pnpm" ? "pnpm run" : pm === "yarn" ? "yarn" : pm === "bun" ? "bun run" : "npm run";
+    if (scripts.typecheck) stopCmds.push(`${runner} typecheck`);
+    else if (scripts["type-check"]) stopCmds.push(`${runner} type-check`);
+    if (scripts["lint:fix"]) editCmds.push(`${runner} lint:fix`);
+    else if (scripts.lint) editCmds.push(`${runner} lint -- --fix`);
+  }
+
+  if (stopCmds.length === 0 && editCmds.length === 0) return undefined;
+
+  const hooks: Record<string, HookGroup[]> = {};
+  if (stopCmds.length > 0) {
+    hooks.Stop = [
+      { matcher: "", hooks: stopCmds.map((command) => ({ type: "command", command })) },
+    ];
+  }
+  if (editCmds.length > 0) {
+    hooks.PostToolUse = [
+      { matcher: "Edit|Write|MultiEdit", hooks: editCmds.map((command) => ({ type: "command", command })) },
+    ];
+  }
+  return hooks;
 }
 
 /**

@@ -1235,11 +1235,11 @@ function writeIfNew(filePath, content, result) {
 function generateClaudeFiles(targetDir, profile, analysis) {
   const result = { created: [], skipped: [] };
   const claude = (p9) => join7(targetDir, ".claude", p9);
-  writeIfNew(claude("settings.json"), buildSettingsJson(profile, analysis), result);
+  const packageScripts = readPackageScripts(targetDir);
+  writeIfNew(claude("settings.json"), buildSettingsJson(profile, analysis, packageScripts), result);
   writeIfNew(claude("mcp.json"), buildMcpJson(analysis), result);
   writeIfNew(claude("memory/decisions.md"), buildDecisionsMd2(profile, analysis), result);
   writeIfNew(claude("commands/boot.md"), BOOT_COMMAND, result);
-  const packageScripts = readPackageScripts(targetDir);
   writeIfNew(claude("commands/verify.md"), buildVerifyCommand(analysis, packageScripts), result);
   writeIfNew(claude("commands/code-review.md"), CODE_REVIEW_COMMAND, result);
   writeIfNew(claude("agents/researcher.md"), AGENT_RESEARCHER.replace(/<project-name>/g, analysis.name), result);
@@ -1485,16 +1485,44 @@ tools: [Read, Write, Edit, Bash, Grep, Glob]
 4. **Coverage is a signal, not a goal.** 100% on a trivial getter is worthless; 0% on the payments path is a blocker.
 5. **No conditional asserts.** \`if (x) expect(...)\` hides bugs.
 `;
-function buildSettingsJson(profile, analysis) {
+function buildSettingsJson(profile, analysis, scripts) {
   const deny = ["Bash(rm -rf:*)", "Bash(git push --force:*)"];
   if (profile.securityStance === "paranoid") {
     deny.push("Bash(git push --force-with-lease:*)", "Bash(chmod 777:*)");
   }
   const allow = buildAllowList(analysis);
+  const hooks = buildHooks(analysis, scripts);
   return JSON.stringify({
     $schema: "https://json.schemastore.org/claude-code-settings.json",
-    permissions: { allow, deny }
+    permissions: { allow, deny },
+    ...hooks ? { hooks } : {}
   }, null, 2);
+}
+function buildHooks(analysis, scripts) {
+  const stopCmds = [];
+  const editCmds = [];
+  const isNode = analysis.languages.some((l) => l === "TypeScript" || l === "JavaScript");
+  if (isNode) {
+    const pm = analysis.packageManager;
+    const runner = pm === "pnpm" ? "pnpm run" : pm === "yarn" ? "yarn" : pm === "bun" ? "bun run" : "npm run";
+    if (scripts.typecheck) stopCmds.push(`${runner} typecheck`);
+    else if (scripts["type-check"]) stopCmds.push(`${runner} type-check`);
+    if (scripts["lint:fix"]) editCmds.push(`${runner} lint:fix`);
+    else if (scripts.lint) editCmds.push(`${runner} lint -- --fix`);
+  }
+  if (stopCmds.length === 0 && editCmds.length === 0) return void 0;
+  const hooks = {};
+  if (stopCmds.length > 0) {
+    hooks.Stop = [
+      { matcher: "", hooks: stopCmds.map((command) => ({ type: "command", command })) }
+    ];
+  }
+  if (editCmds.length > 0) {
+    hooks.PostToolUse = [
+      { matcher: "Edit|Write|MultiEdit", hooks: editCmds.map((command) => ({ type: "command", command })) }
+    ];
+  }
+  return hooks;
 }
 function buildAllowList(analysis) {
   const allow = [
