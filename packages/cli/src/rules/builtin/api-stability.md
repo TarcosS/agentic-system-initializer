@@ -2,9 +2,9 @@
 title: Never Introduce Breaking API Changes
 impact: CRITICAL
 tags: [api, stability, versioning, backwards-compatibility]
-globs: ["src/api/**", "src/routes/**", "**/controllers/**"]
-alwaysApply: false
 category: api
+trigger:
+  globs: ["src/api/**", "src/routes/**", "**/controllers/**"]
 ---
 
 ## Never Introduce Breaking API Changes

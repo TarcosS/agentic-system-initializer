@@ -2,9 +2,9 @@
 title: Test Before Commit
 impact: HIGH
 tags: [testing, quality, ci]
-globs: ["**/*.test.*", "**/*.spec.*", "src/**"]
-alwaysApply: true
 category: testing
+trigger:
+  globs: ["**/*.test.*", "**/*.spec.*", "src/**"]
 ---
 
 ## Test Before Commit

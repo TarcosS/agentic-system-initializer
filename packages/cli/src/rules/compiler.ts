@@ -26,6 +26,14 @@ export interface CompiledRule {
   path: string;
   /** File content in agent-native format */
   content: string;
+  /**
+   * One-line registry entry the router emitter surfaces in the thin router
+   * file. Adapters return this so the router can point at the rule without
+   * duplicating its body. Omit for rules the router should not advertise
+   * (e.g. description-triggered rules inlined into a single instructions
+   * file when an agent lacks native lazy-load).
+   */
+  routerLine?: string;
 }
 
 // ── Adapter registry ──────────────────────────────────────────

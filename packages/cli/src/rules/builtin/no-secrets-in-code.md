@@ -2,9 +2,9 @@
 title: No Secrets in Code
 impact: CRITICAL
 tags: [security, secrets, credentials]
-globs: ["**/*"]
-alwaysApply: true
 category: security
+trigger:
+  always: true
 ---
 
 ## No Secrets in Code

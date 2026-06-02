@@ -2,9 +2,9 @@
 title: Dependency Approval Required
 impact: MEDIUM
 tags: [dependencies, security, supply-chain]
-globs: ["package.json", "requirements.txt", "Gemfile", "go.mod", "Cargo.toml", "*.csproj"]
-alwaysApply: false
 category: dependencies
+trigger:
+  globs: ["package.json", "requirements.txt", "Gemfile", "go.mod", "Cargo.toml", "*.csproj"]
 ---
 
 ## Dependency Approval Required

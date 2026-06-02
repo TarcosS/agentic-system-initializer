@@ -2,9 +2,9 @@
 title: Error Handling Standards
 impact: HIGH
 tags: [error-handling, reliability, debugging]
-globs: ["src/**"]
-alwaysApply: false
 category: coding-standards
+trigger:
+  globs: ["src/**"]
 ---
 
 ## Error Handling Standards

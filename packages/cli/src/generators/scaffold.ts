@@ -5,6 +5,8 @@ import type { UserProfile } from "../commands/profile.js";
 import { profileToMarkdown } from "../commands/profile.js";
 import type { ProjectAnalysis } from "../analyzers/project.js";
 import { loadTemplate, fillTemplate, buildTemplateVars } from "../utils/template-engine.js";
+import { generateRouter, ROUTER_AGENTS } from "./router.js";
+import type { CompiledRule } from "../rules/compiler.js";
 
 export interface ScaffoldOptions {
   targetDir: string;
@@ -12,6 +14,12 @@ export interface ScaffoldOptions {
   profile: UserProfile;
   analysis: ProjectAnalysis;
   overwrite?: boolean;
+  /**
+   * Compiled rules per agent. When provided for an agent in ROUTER_AGENTS,
+   * scaffold emits a thin router via generateRouter() instead of the
+   * legacy template. Tier-2 agents still fall back to templates.
+   */
+  compiledRules?: Map<AgentId, CompiledRule[]>;
 }
 
 export interface ScaffoldResult {
@@ -21,7 +29,7 @@ export interface ScaffoldResult {
 }
 
 export function writeScaffold(options: ScaffoldOptions): ScaffoldResult {
-  const { targetDir, agents, profile, analysis, overwrite = false } = options;
+  const { targetDir, agents, profile, analysis, overwrite = false, compiledRules } = options;
   const result: ScaffoldResult = { created: [], skipped: [], errors: [] };
   const vars = buildTemplateVars(profile, analysis);
 
@@ -64,10 +72,19 @@ export function writeScaffold(options: ScaffoldOptions): ScaffoldResult {
     overwrite
   );
 
-  // 6. Write agent-specific scaffolds from templates
+  // 6. Write agent-specific scaffolds. For Tier-1 (claude-code, cursor,
+  //    copilot) we emit a thin router from generateRouter(); other agents
+  //    keep using the legacy template until the Tier-2 follow-up.
   for (const agent of agents) {
     try {
-      scaffoldAgent(targetDir, agent, vars, result, overwrite);
+      if (ROUTER_AGENTS.has(agent)) {
+        const rules = compiledRules?.get(agent) ?? [];
+        const router = generateRouter(profile, analysis, rules, agent);
+        const filePath = join(targetDir, router.path);
+        writeIfMissing(filePath, router.content, result, overwrite);
+      } else {
+        scaffoldAgent(targetDir, agent, vars, result, overwrite);
+      }
     } catch (err) {
       result.errors.push(`Failed to scaffold ${agent}: ${err}`);
     }

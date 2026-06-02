@@ -2,8 +2,9 @@
 title: No Force Push to Shared Branches
 impact: CRITICAL
 tags: [git, collaboration, safety]
-alwaysApply: true
 category: git
+trigger:
+  always: true
 ---
 
 ## No Force Push to Shared Branches

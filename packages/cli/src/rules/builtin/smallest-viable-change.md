@@ -2,8 +2,9 @@
 title: Smallest Viable Change
 impact: HIGH
 tags: [code-quality, scope, focus]
-alwaysApply: true
 category: coding-standards
+trigger:
+  description: "Apply when planning a change spanning more than one file or when scope is fanning out."
 ---
 
 ## Smallest Viable Change

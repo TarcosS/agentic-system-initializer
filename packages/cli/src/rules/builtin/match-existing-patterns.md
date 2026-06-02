@@ -2,8 +2,9 @@
 title: Match Existing Patterns
 impact: HIGH
 tags: [consistency, code-quality, patterns]
-alwaysApply: true
 category: coding-standards
+trigger:
+  description: "Apply when creating a new file or introducing a new utility, so existing patterns are reused."
 ---
 
 ## Match Existing Patterns

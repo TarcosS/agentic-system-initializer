@@ -43,6 +43,7 @@ export const BUILTIN_RULE_SLUGS = [
   "no-force-push",
   "dependency-approval",
   "error-handling-standards",
+  "dispatch-discipline",
 ] as const;
 
 /**

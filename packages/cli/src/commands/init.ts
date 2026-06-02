@@ -91,42 +91,13 @@ export const initCommand = new Command("init")
       p.log.success(`Updated .gitignore (+${gitignoreResult.added} agentinit entries)`);
     }
 
-    // 1a. Write shared scaffold (CLAUDE.md, AGENTS.md, decisions.md, shared instructions)
-    const scaffoldResult = writeScaffold({
-      targetDir,
-      agents,
-      profile,
-      analysis,
-    });
-    if (scaffoldResult.created.length > 0) {
-      p.log.success(`Created ${scaffoldResult.created.length} scaffold file(s)`);
-    }
-    if (scaffoldResult.errors.length > 0) {
-      for (const err of scaffoldResult.errors) {
-        p.log.warn(`Scaffold error: ${err}`);
-      }
-    }
-
-    // 1b. Write how-to-use-skills.sh
-    if (writeHowToUseSkills(targetDir)) {
-      p.log.success("Created how-to-use-skills.sh");
-    }
-
-    // 1c. Write .claude/ files (settings.json, mcp.json, agents, skills, commands, memory)
-    if (isClaudeCode) {
-      const claudeResult = generateClaudeFiles(targetDir, profile, analysis);
-      if (claudeResult.created.length > 0) {
-        p.log.success(
-          `Created ${claudeResult.created.length} file(s) in .claude/`
-        );
-      }
-    }
-
-    // 1d. Add & compile rules
+    // 1a. Load + write builtin rules to .agents/rules/builtin/, then compile
+    //     per-agent. The router emitter (step 1b) needs the compiled rules
+    //     so its registry section can list them.
     const builtinRules = loadBuiltinRules();
+    let compiledRules: ReturnType<typeof compileRulesForAgents> | undefined;
     if (builtinRules.length > 0) {
       const { writeFileSync, mkdirSync } = await import("node:fs");
-      // Copy builtin rules to project
       const builtinDir = join(targetDir, ".agents", "rules", "builtin");
       if (!existsSync(builtinDir)) mkdirSync(builtinDir, { recursive: true });
 
@@ -146,10 +117,9 @@ export const initCommand = new Command("init")
         p.log.success(`Added ${rulesAdded} built-in rule(s)`);
       }
 
-      // Compile rules for all selected agents
-      const compiled = compileRulesForAgents(builtinRules, agents);
+      compiledRules = compileRulesForAgents(builtinRules, agents);
       let totalCompiled = 0;
-      for (const [, files] of compiled) {
+      for (const [, files] of compiledRules) {
         for (const file of files) {
           const fullPath = join(targetDir, file.path);
           const dir = join(fullPath, "..");
@@ -161,6 +131,51 @@ export const initCommand = new Command("init")
       if (totalCompiled > 0) {
         p.log.success(`Compiled ${totalCompiled} rule file(s) for ${agents.join(", ")}`);
       }
+    }
+
+    // 1b. Write shared scaffold (CLAUDE.md, AGENTS.md, decisions.md, shared
+    //     instructions). For Tier-1 agents (claude-code, cursor, copilot)
+    //     the scaffold emits a thin router built from compiledRules; other
+    //     agents still use legacy templates.
+    const scaffoldResult = writeScaffold({
+      targetDir,
+      agents,
+      profile,
+      analysis,
+      compiledRules,
+    });
+    if (scaffoldResult.created.length > 0) {
+      p.log.success(`Created ${scaffoldResult.created.length} scaffold file(s)`);
+    }
+    if (scaffoldResult.errors.length > 0) {
+      for (const err of scaffoldResult.errors) {
+        p.log.warn(`Scaffold error: ${err}`);
+      }
+    }
+
+    // 1c. Write how-to-use-skills.sh
+    if (writeHowToUseSkills(targetDir)) {
+      p.log.success("Created how-to-use-skills.sh");
+    }
+
+    // 1d. Write .claude/ files (settings.json, mcp.json, agents, skills, commands, memory)
+    if (isClaudeCode) {
+      const claudeResult = generateClaudeFiles(targetDir, profile, analysis);
+      if (claudeResult.created.length > 0) {
+        p.log.success(
+          `Created ${claudeResult.created.length} file(s) in .claude/`
+        );
+      }
+    }
+
+    // 1e. Bound the decisions log so older entries roll to a yearly archive
+    //     rather than growing unbounded in .agents/memory/decisions.md.
+    const { boundDecisionsLog } = await import("../generators/decisions.js");
+    const bounded = boundDecisionsLog(targetDir);
+    if (bounded.archived > 0) {
+      p.log.success(
+        `Archived ${bounded.archived} decision log entry(ies) (kept ${bounded.kept} inline)`
+      );
     }
 
     // 1e. Install stack-driven skills (best-effort, per-skill)

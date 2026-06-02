@@ -2,32 +2,47 @@ import type { RuleAdapter, CompiledRule } from "../compiler.js";
 import type { Rule } from "../schema.js";
 
 /**
- * Cursor uses .mdc files with YAML frontmatter.
- * Supports: globs (auto-attach), alwaysApply, description (agent-requested).
+ * Cursor uses .mdc files with YAML frontmatter. Three native modes:
+ *   trigger.always       → alwaysApply: true
+ *   trigger.globs        → globs: [...], alwaysApply: false
+ *   trigger.description  → description: "..." (no globs, no alwaysApply
+ *                          ⇒ Cursor treats it as agent-requested)
  */
 export const cursorAdapter: RuleAdapter = {
   agentId: "cursor",
 
   compile(rule: Rule, index: number): CompiledRule {
     const slug = rule.slug;
-    const path = `.cursor/rules/${String(index).padStart(2, "0")}-${slug}.mdc`;
+    const idx = String(index).padStart(2, "0");
+    const path = `.cursor/rules/${idx}-${slug}.mdc`;
+    const trigger = rule.meta.trigger;
 
     const fmLines: string[] = ["---"];
+    let triggerHint: string;
 
-    // Cursor frontmatter: description is always present
-    fmLines.push(`description: "${rule.meta.title}"`);
-
-    if (rule.meta.alwaysApply) {
+    if (trigger.kind === "always") {
+      fmLines.push(`description: ${JSON.stringify(rule.meta.title)}`);
       fmLines.push("alwaysApply: true");
-    } else if (rule.meta.globs?.length) {
-      const globStr = rule.meta.globs.map((g) => `"${g}"`).join(", ");
+      triggerHint = "always";
+    } else if (trigger.kind === "globs") {
+      fmLines.push(`description: ${JSON.stringify(rule.meta.title)}`);
+      const globStr = trigger.globs.map((g) => `"${g}"`).join(", ");
       fmLines.push(`globs: [${globStr}]`);
+      fmLines.push("alwaysApply: false");
+      triggerHint = `globs: ${trigger.globs.join(", ")}`;
+    } else {
+      fmLines.push(`description: ${JSON.stringify(trigger.description)}`);
+      triggerHint = "description";
     }
-    // If neither alwaysApply nor globs → agent-requested (description only)
 
     fmLines.push("---");
 
     const content = [fmLines.join("\n"), "", rule.body].join("\n");
-    return { path, content };
+
+    return {
+      path,
+      content,
+      routerLine: `- ${idx}-${slug} — ${rule.meta.title} [${triggerHint}]`,
+    };
   },
 };

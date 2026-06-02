@@ -4,7 +4,7 @@ import {
   getBuiltinRuleContent,
   loadBuiltinRules,
   parseRule
-} from "./chunk-AUWUU2ZX.js";
+} from "./chunk-5CBAKA7E.js";
 
 // src/index.ts
 import { Command as Command7 } from "commander";
@@ -987,9 +987,182 @@ function guessLockFile(analysis) {
   return map[analysis.packageManager] || "unknown";
 }
 
+// src/generators/router.ts
+var ROUTER_AGENTS = /* @__PURE__ */ new Set(["claude-code", "cursor", "copilot"]);
+var COPILOT_INLINE_MARKER = "__COPILOT_INLINE__";
+var CLAUDE_SKILLS = [
+  { slug: "context-hygiene", description: "Keep the working context lean during long sessions." },
+  { slug: "log-decision", description: "Append a structured entry to .claude/memory/decisions.md." },
+  { slug: "workflows", description: "Step-by-step procedures for feature / bug / refactor / debug / spike." },
+  { slug: "commands", description: "Reference for project install / dev / test / lint / build commands." },
+  { slug: "conventions", description: "File naming, import order, export style, error-handling pattern." },
+  { slug: "git-flow", description: "Branching, commit message style, push/merge rules." },
+  { slug: "error-recovery", description: "Recovering from build / test / deploy / tool failures." },
+  { slug: "pr-flow", description: "PR title style, body sections, screenshots, self-review checklist." }
+];
+var CLAUDE_SUB_AGENTS = [
+  { slug: "researcher", description: "Bounded info-gathering: codebase exploration, doc comparison, trade-off analysis." },
+  { slug: "implementer", description: "Bounded coding sub-agent for well-scoped tasks (<300 LOC, <10 files)." },
+  { slug: "reviewer", description: "Second-pass correctness / security / data-safety review of a diff." },
+  { slug: "adversarial-reviewer", description: "Fresh-context audit of diff vs. plan/spec \u2014 correctness, not style." }
+];
+var DISPATCH_MATRIX_LINES = [
+  "Dispatch BEFORE you start work when ANY apply:",
+  "- Task touches >3 files OR needs Grep across the repo \u2192 researcher",
+  "- Library / pattern / migration trade-off needs comparing \u2192 researcher",
+  "- Bounded coding task with agreed design, <300 LOC, <10 files \u2192 implementer",
+  "- Diff is >50 LOC OR touches auth / secrets / migrations OR adds a dep \u2192 reviewer",
+  "- Diff ready for merge AND a plan/spec exists \u2192 adversarial-reviewer (fresh context)",
+  "Skip dispatch for: single-file edits <2 min, pure typo / format fixes."
+];
+var DEGRADED_DISPATCH_LINES = [
+  "Before any task that touches >3 files OR needs repo-wide search:",
+  "1. Do a read-only pass first (Grep / Read / Glob) \u2014 no edits.",
+  "2. Summarize findings in three bullets (key files, current pattern, risks).",
+  "3. *Then* start editing. The read-only pass replaces a researcher sub-agent."
+];
+function generateRouter(profile, analysis, compiled, agent) {
+  if (!ROUTER_AGENTS.has(agent)) {
+    throw new Error(`generateRouter does not support agent: ${agent}`);
+  }
+  const sections = [];
+  if (agent === "cursor") {
+    sections.push(
+      [
+        "---",
+        'description: "Project router \u2014 always loaded. Lists rules, skills, dispatch matrix."',
+        "alwaysApply: true",
+        "---"
+      ].join("\n")
+    );
+  }
+  sections.push(headerSection(analysis, agent));
+  sections.push(profileToMarkdown(profile).trim());
+  sections.push(projectSection(analysis));
+  sections.push(dispatchSection(agent));
+  const { registry, copilotInlines } = splitRegistry(compiled);
+  sections.push(registrySection(registry, agent));
+  if (agent === "copilot" && copilotInlines.length > 0) {
+    sections.push(["## Description-triggered rules", "", ...copilotInlines].join("\n"));
+  }
+  if (agent === "claude-code") {
+    sections.push(skillsSection());
+    sections.push(subAgentsSection());
+  }
+  sections.push(gotchasSection(analysis));
+  sections.push(decisionLogSection(agent));
+  if (agent === "claude-code") {
+    sections.push(
+      "## Personal overrides\n\nSee `CLAUDE.local.md` (gitignored) for personal-only overrides."
+    );
+  }
+  const content = sections.join("\n\n").replace(/\n{3,}/g, "\n\n").trimEnd() + "\n";
+  return { path: routerPath(agent), content };
+}
+function routerPath(agent) {
+  switch (agent) {
+    case "claude-code":
+      return "CLAUDE.md";
+    case "cursor":
+      return ".cursor/rules/00-router.mdc";
+    case "copilot":
+      return ".github/copilot-instructions.md";
+    default:
+      throw new Error(`No router path for agent: ${agent}`);
+  }
+}
+function headerSection(analysis, agent) {
+  const titles = {
+    "claude-code": "CLAUDE.md",
+    cursor: "# Project router",
+    copilot: "# Copilot instructions"
+  };
+  const title = agent === "claude-code" ? `# ${titles["claude-code"]}` : titles[agent];
+  return [
+    title,
+    "",
+    `> Thin router for **${analysis.name}**. Bodies live in lazy-loaded rules and skills \u2014 this file only points at them.`
+  ].join("\n");
+}
+function projectSection(analysis) {
+  const stack = [...analysis.languages, ...analysis.frameworks].filter(Boolean).join(", ") || "unspecified";
+  const tests = analysis.testFramework.join(", ") || "none detected";
+  const ci = analysis.ci.join(", ") || "none";
+  const lines = [
+    "## Project",
+    "",
+    `- **Stack:** ${stack}`,
+    `- **Package manager:** ${analysis.packageManager}`,
+    `- **Tests:** ${tests}`,
+    `- **CI:** ${ci}`
+  ];
+  if (analysis.monorepo) lines.push("- **Monorepo:** yes");
+  if (analysis.hasDocker) lines.push("- **Docker:** present");
+  if (analysis.hasTerraform) lines.push("- **Terraform:** present");
+  if (analysis.hasDatabase) lines.push("- **Database:** present");
+  return lines.join("\n");
+}
+function dispatchSection(agent) {
+  const isClaude = agent === "claude-code";
+  const lines = isClaude ? DISPATCH_MATRIX_LINES : DEGRADED_DISPATCH_LINES;
+  return ["## Dispatch", "", "```", ...lines, "```"].join("\n");
+}
+function splitRegistry(compiled) {
+  const registry = [];
+  const copilotInlines = [];
+  for (const c of compiled) {
+    if (!c.routerLine) continue;
+    if (c.routerLine.startsWith(COPILOT_INLINE_MARKER)) {
+      copilotInlines.push(c.routerLine.slice(COPILOT_INLINE_MARKER.length));
+    } else {
+      registry.push(c.routerLine);
+    }
+  }
+  return { registry, copilotInlines };
+}
+function registrySection(registry, _agent) {
+  if (registry.length === 0) {
+    return [
+      "## Rules registry",
+      "",
+      "_No rules installed. Run `agentinit rules add --all` to seed the builtin set._"
+    ].join("\n");
+  }
+  return ["## Rules registry", "", ...registry].join("\n");
+}
+function skillsSection() {
+  const lines = ["## Skills (load on demand)", ""];
+  for (const s of CLAUDE_SKILLS) {
+    lines.push(`- \`${s.slug}\` \u2014 ${s.description}`);
+  }
+  return lines.join("\n");
+}
+function subAgentsSection() {
+  const lines = ["## Sub-agents", ""];
+  for (const a of CLAUDE_SUB_AGENTS) {
+    lines.push(`- \`${a.slug}\` \u2014 ${a.description}`);
+  }
+  return lines.join("\n");
+}
+function gotchasSection(_analysis) {
+  return [
+    "## Gotchas",
+    "",
+    "_Project-specific traps go here. AI Phase 2 may extend; keep entries short and load-bearing._"
+  ].join("\n");
+}
+function decisionLogSection(agent) {
+  const logPath = agent === "claude-code" ? ".claude/memory/decisions.md" : ".agents/memory/decisions.md";
+  return [
+    "## Decision log",
+    "",
+    `See \`${logPath}\` for the project's append-only decision log. Recent entries are kept inline there; older entries roll to \`.agents/memory/decisions-archive/<year>.md\`.`
+  ].join("\n");
+}
+
 // src/generators/scaffold.ts
 function writeScaffold(options) {
-  const { targetDir, agents, profile, analysis, overwrite = false } = options;
+  const { targetDir, agents, profile, analysis, overwrite = false, compiledRules } = options;
   const result = { created: [], skipped: [], errors: [] };
   const vars = buildTemplateVars(profile, analysis);
   ensureDir(join6(targetDir, ".agents", "memory"));
@@ -1022,7 +1195,14 @@ function writeScaffold(options) {
   );
   for (const agent of agents) {
     try {
-      scaffoldAgent(targetDir, agent, vars, result, overwrite);
+      if (ROUTER_AGENTS.has(agent)) {
+        const rules = compiledRules?.get(agent) ?? [];
+        const router = generateRouter(profile, analysis, rules, agent);
+        const filePath = join6(targetDir, router.path);
+        writeIfMissing(filePath, router.content, result, overwrite);
+      } else {
+        scaffoldAgent(targetDir, agent, vars, result, overwrite);
+      }
     } catch (err) {
       result.errors.push(`Failed to scaffold ${agent}: ${err}`);
     }
@@ -2495,18 +2675,32 @@ var cursorAdapter = {
   agentId: "cursor",
   compile(rule, index) {
     const slug = rule.slug;
-    const path = `.cursor/rules/${String(index).padStart(2, "0")}-${slug}.mdc`;
+    const idx = String(index).padStart(2, "0");
+    const path = `.cursor/rules/${idx}-${slug}.mdc`;
+    const trigger = rule.meta.trigger;
     const fmLines = ["---"];
-    fmLines.push(`description: "${rule.meta.title}"`);
-    if (rule.meta.alwaysApply) {
+    let triggerHint;
+    if (trigger.kind === "always") {
+      fmLines.push(`description: ${JSON.stringify(rule.meta.title)}`);
       fmLines.push("alwaysApply: true");
-    } else if (rule.meta.globs?.length) {
-      const globStr = rule.meta.globs.map((g) => `"${g}"`).join(", ");
+      triggerHint = "always";
+    } else if (trigger.kind === "globs") {
+      fmLines.push(`description: ${JSON.stringify(rule.meta.title)}`);
+      const globStr = trigger.globs.map((g) => `"${g}"`).join(", ");
       fmLines.push(`globs: [${globStr}]`);
+      fmLines.push("alwaysApply: false");
+      triggerHint = `globs: ${trigger.globs.join(", ")}`;
+    } else {
+      fmLines.push(`description: ${JSON.stringify(trigger.description)}`);
+      triggerHint = "description";
     }
     fmLines.push("---");
     const content = [fmLines.join("\n"), "", rule.body].join("\n");
-    return { path, content };
+    return {
+      path,
+      content,
+      routerLine: `- ${idx}-${slug} \u2014 ${rule.meta.title} [${triggerHint}]`
+    };
   }
 };
 
@@ -2515,32 +2709,87 @@ var claudeAdapter = {
   agentId: "claude-code",
   compile(rule, index) {
     const slug = rule.slug;
-    const path = `.claude/rules/${String(index).padStart(2, "0")}-${slug}.md`;
+    const idx = String(index).padStart(2, "0");
+    const trigger = rule.meta.trigger;
+    if (trigger.kind === "description") {
+      const path2 = `.claude/skills/${slug}/SKILL.md`;
+      const fm = [
+        "---",
+        `name: ${slug}`,
+        // Escape any embedded double quotes in the description.
+        `description: ${JSON.stringify(trigger.description)}`,
+        "---",
+        ""
+      ].join("\n");
+      const body = renderRuleBody(rule);
+      const content = fm + body;
+      return {
+        path: path2,
+        content,
+        routerLine: `- ${slug} \u2014 ${rule.meta.title} [skill; load on description]`
+      };
+    }
+    const path = `.claude/rules/${idx}-${slug}.md`;
     const lines = [];
     lines.push(`# ${rule.meta.title}`);
     if (rule.meta.impact) {
-      lines.push(`
-**Impact: ${rule.meta.impact}**`);
+      lines.push("");
+      lines.push(`**Impact: ${rule.meta.impact}**`);
     }
-    if (rule.meta.globs?.length) {
-      lines.push(`
-**Applies to:** ${rule.meta.globs.join(", ")}`);
+    if (trigger.kind === "globs") {
+      lines.push("");
+      lines.push(`**Applies to:** ${trigger.globs.join(", ")}`);
     }
     lines.push("");
     lines.push(rule.body);
-    return { path, content: lines.join("\n") };
+    const triggerHint = trigger.kind === "always" ? "always" : `globs: ${trigger.globs.join(", ")}`;
+    return {
+      path,
+      content: lines.join("\n"),
+      routerLine: `- ${idx}-${slug} \u2014 ${rule.meta.title} [${triggerHint}]`
+    };
   }
 };
+function renderRuleBody(rule) {
+  const parts = [];
+  parts.push(`# ${rule.meta.title}`);
+  if (rule.meta.impact) {
+    parts.push("");
+    parts.push(`**Impact: ${rule.meta.impact}**`);
+  }
+  parts.push("");
+  parts.push(rule.body);
+  return parts.join("\n");
+}
 
 // src/rules/adapters/copilot-adapter.ts
 var copilotAdapter = {
   agentId: "copilot",
   compile(rule, _index) {
     const slug = rule.slug;
+    const trigger = rule.meta.trigger;
     const path = `.github/instructions/${slug}.instructions.md`;
+    if (trigger.kind === "description") {
+      const pointerBody = [
+        "---",
+        'applyTo: ""',
+        "---",
+        "",
+        `# ${rule.meta.title}`,
+        "",
+        `_This rule is description-triggered. Its full body is inlined into \`.github/copilot-instructions.md\` under "When: ${trigger.description}"._`,
+        ""
+      ].join("\n");
+      const inlineBlock = renderInlineBlock(rule, trigger.description);
+      return {
+        path,
+        content: pointerBody,
+        routerLine: `__COPILOT_INLINE__${inlineBlock}`
+      };
+    }
     const lines = ["---"];
-    if (rule.meta.globs?.length) {
-      lines.push(`applyTo: "${rule.meta.globs.join(",")}"`);
+    if (trigger.kind === "globs") {
+      lines.push(`applyTo: "${trigger.globs.join(",")}"`);
     } else {
       lines.push('applyTo: "**"');
     }
@@ -2548,14 +2797,32 @@ var copilotAdapter = {
     lines.push("");
     lines.push(`# ${rule.meta.title}`);
     if (rule.meta.impact) {
-      lines.push(`
-**Impact: ${rule.meta.impact}**`);
+      lines.push("");
+      lines.push(`**Impact: ${rule.meta.impact}**`);
     }
     lines.push("");
     lines.push(rule.body);
-    return { path, content: lines.join("\n") };
+    const triggerHint = trigger.kind === "always" ? "always" : `globs: ${trigger.globs.join(", ")}`;
+    return {
+      path,
+      content: lines.join("\n"),
+      routerLine: `- ${slug} \u2014 ${rule.meta.title} [${triggerHint}]`
+    };
   }
 };
+function renderInlineBlock(rule, description) {
+  const parts = [];
+  parts.push(`### When: ${description}`);
+  parts.push("");
+  parts.push(`**${rule.meta.title}**`);
+  if (rule.meta.impact) {
+    parts.push("");
+    parts.push(`Impact: ${rule.meta.impact}`);
+  }
+  parts.push("");
+  parts.push(rule.body);
+  return parts.join("\n");
+}
 
 // src/rules/adapters/cline-adapter.ts
 var clineAdapter = {
@@ -3244,11 +3511,48 @@ var initCommand = new Command3("init").description("Analyze project, build profi
   } else if (gitignoreResult.added > 0) {
     p5.log.success(`Updated .gitignore (+${gitignoreResult.added} agentinit entries)`);
   }
+  const builtinRules = loadBuiltinRules();
+  let compiledRules;
+  if (builtinRules.length > 0) {
+    const { writeFileSync: writeFileSync8, mkdirSync: mkdirSync6 } = await import("fs");
+    const builtinDir = join9(targetDir, ".agents", "rules", "builtin");
+    if (!existsSync10(builtinDir)) mkdirSync6(builtinDir, { recursive: true });
+    let rulesAdded = 0;
+    for (const rule of builtinRules) {
+      const dest = join9(builtinDir, `${rule.slug}.md`);
+      if (!existsSync10(dest)) {
+        const { getBuiltinRuleContent: getBuiltinRuleContent2 } = await import("./loader-URFUUTUB.js");
+        const content = getBuiltinRuleContent2(rule.slug);
+        if (content) {
+          writeFileSync8(dest, content);
+          rulesAdded++;
+        }
+      }
+    }
+    if (rulesAdded > 0) {
+      p5.log.success(`Added ${rulesAdded} built-in rule(s)`);
+    }
+    compiledRules = compileRulesForAgents(builtinRules, agents);
+    let totalCompiled = 0;
+    for (const [, files] of compiledRules) {
+      for (const file of files) {
+        const fullPath = join9(targetDir, file.path);
+        const dir = join9(fullPath, "..");
+        if (!existsSync10(dir)) mkdirSync6(dir, { recursive: true });
+        writeFileSync8(fullPath, file.content);
+        totalCompiled++;
+      }
+    }
+    if (totalCompiled > 0) {
+      p5.log.success(`Compiled ${totalCompiled} rule file(s) for ${agents.join(", ")}`);
+    }
+  }
   const scaffoldResult = writeScaffold({
     targetDir,
     agents,
     profile,
-    analysis
+    analysis,
+    compiledRules
   });
   if (scaffoldResult.created.length > 0) {
     p5.log.success(`Created ${scaffoldResult.created.length} scaffold file(s)`);
@@ -3269,40 +3573,12 @@ var initCommand = new Command3("init").description("Analyze project, build profi
       );
     }
   }
-  const builtinRules = loadBuiltinRules();
-  if (builtinRules.length > 0) {
-    const { writeFileSync: writeFileSync8, mkdirSync: mkdirSync6 } = await import("fs");
-    const builtinDir = join9(targetDir, ".agents", "rules", "builtin");
-    if (!existsSync10(builtinDir)) mkdirSync6(builtinDir, { recursive: true });
-    let rulesAdded = 0;
-    for (const rule of builtinRules) {
-      const dest = join9(builtinDir, `${rule.slug}.md`);
-      if (!existsSync10(dest)) {
-        const { getBuiltinRuleContent: getBuiltinRuleContent2 } = await import("./loader-EIL52SHS.js");
-        const content = getBuiltinRuleContent2(rule.slug);
-        if (content) {
-          writeFileSync8(dest, content);
-          rulesAdded++;
-        }
-      }
-    }
-    if (rulesAdded > 0) {
-      p5.log.success(`Added ${rulesAdded} built-in rule(s)`);
-    }
-    const compiled = compileRulesForAgents(builtinRules, agents);
-    let totalCompiled = 0;
-    for (const [, files] of compiled) {
-      for (const file of files) {
-        const fullPath = join9(targetDir, file.path);
-        const dir = join9(fullPath, "..");
-        if (!existsSync10(dir)) mkdirSync6(dir, { recursive: true });
-        writeFileSync8(fullPath, file.content);
-        totalCompiled++;
-      }
-    }
-    if (totalCompiled > 0) {
-      p5.log.success(`Compiled ${totalCompiled} rule file(s) for ${agents.join(", ")}`);
-    }
+  const { boundDecisionsLog } = await import("./decisions-F2TWFEIK.js");
+  const bounded = boundDecisionsLog(targetDir);
+  if (bounded.archived > 0) {
+    p5.log.success(
+      `Archived ${bounded.archived} decision log entry(ies) (kept ${bounded.kept} inline)`
+    );
   }
   const skillSet = getSkillsForStack(analysis);
   const agentFlags = Array.from(
