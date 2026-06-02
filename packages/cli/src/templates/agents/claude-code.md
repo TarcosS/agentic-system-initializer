@@ -21,3 +21,5 @@ See .agents/memory/decisions.md for project decisions and context.
 - Package manager: {{packageManager}}
 - Test command: {{testCommand}}
 - Lint command: {{lintCommand}}
+
+See @CLAUDE.local.md for personal overrides (gitignored).

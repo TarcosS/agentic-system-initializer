@@ -9,7 +9,12 @@ import { selectAgents, type AgentId } from "../utils/agent-selector.js";
 import { generatePrompt } from "../generators/prompt.js";
 import { canDispatch, dispatchToAgent, isIdeAgent, getDispatchInstructions } from "../utils/dispatch.js";
 import { writeScaffold, copyClaudeStagingToTarget, cleanupStaging } from "../generators/scaffold.js";
-import { generateClaudeFiles, writeHowToUseSkills } from "../generators/claude-files.js";
+import {
+  generateClaudeFiles,
+  writeHowToUseSkills,
+  ensureGitignoreEntries,
+  AGENTINIT_GITIGNORE_ENTRIES,
+} from "../generators/claude-files.js";
 import { loadBuiltinRules } from "../rules/loader.js";
 import { compileRulesForAgents } from "../rules/compiler.js";
 import { getSkillsForStack } from "../utils/stack-skills.js";
@@ -77,6 +82,14 @@ export const initCommand = new Command("init")
     // Phase 1: Deterministic scaffolding (Node.js, before AI)
     // ═══════════════════════════════════════════════════════════
     p.log.step("Phase 1: Writing scaffold files...");
+
+    // 1a-pre. Ensure .gitignore covers agentinit staging dirs + CLAUDE.local.md
+    const gitignoreResult = ensureGitignoreEntries(targetDir, AGENTINIT_GITIGNORE_ENTRIES);
+    if (gitignoreResult.created) {
+      p.log.success(`Created .gitignore with ${gitignoreResult.added} agentinit entries`);
+    } else if (gitignoreResult.added > 0) {
+      p.log.success(`Updated .gitignore (+${gitignoreResult.added} agentinit entries)`);
+    }
 
     // 1a. Write shared scaffold (CLAUDE.md, AGENTS.md, decisions.md, shared instructions)
     const scaffoldResult = writeScaffold({

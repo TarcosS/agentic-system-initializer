@@ -3,7 +3,7 @@
  * These files are created by the scaffolder (Node.js) because
  * Claude Code's sandbox blocks all writes to `.claude/` paths.
  */
-import { existsSync, mkdirSync, writeFileSync, chmodSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync, chmodSync, readFileSync, appendFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import type { UserProfile } from "../commands/profile.js";
 import type { ProjectAnalysis } from "../analyzers/project.js";
@@ -79,7 +79,57 @@ export function generateClaudeFiles(
   writeIfNew(claude("skills/error-recovery/SKILL.md"), SKILL_ERROR_RECOVERY, result);
   writeIfNew(claude("skills/pr-flow/SKILL.md"), SKILL_PR_FLOW, result);
 
+  // --- Personal overrides stub (gitignored; see ensureAgentinitGitignore) ---
+  writeIfNew(join(targetDir, "CLAUDE.local.md"), CLAUDE_LOCAL_STUB, result);
+
   return result;
+}
+
+/**
+ * Default .gitignore entries that agentinit manages.
+ * Includes its own staging/cache dirs plus the personal CLAUDE.local.md override.
+ */
+export const AGENTINIT_GITIGNORE_ENTRIES = [
+  ".agents/.tmp/",
+  ".agents/.cache/",
+  ".claude/.cache/",
+  ".claude/.tmp/",
+  "CLAUDE.local.md",
+  ".specify/.tmp/",
+];
+
+/**
+ * Idempotently ensure a project's .gitignore contains the given entries.
+ * Creates the file if missing, appends only missing entries on subsequent runs.
+ * Returns the number of entries actually appended (0 ⇒ already up to date).
+ */
+export function ensureGitignoreEntries(
+  targetDir: string,
+  entries: string[],
+): { added: number; created: boolean } {
+  const path = join(targetDir, ".gitignore");
+  const existed = existsSync(path);
+  const current = existed ? readFileSync(path, "utf-8") : "";
+  const have = new Set(
+    current.split("\n").map((l) => l.trim()).filter(Boolean),
+  );
+  const missing = entries.filter((e) => !have.has(e));
+  if (missing.length === 0) return { added: 0, created: false };
+
+  const needsLeadingNewline = existed && current.length > 0 && !current.endsWith("\n");
+  const block =
+    (needsLeadingNewline ? "\n" : "") +
+    (existed && current.length > 0 ? "\n" : "") +
+    "# agentinit-managed\n" +
+    missing.join("\n") +
+    "\n";
+
+  if (existed) {
+    appendFileSync(path, block);
+  } else {
+    writeFileSync(path, block.replace(/^\n+/, ""));
+  }
+  return { added: missing.length, created: !existed };
 }
 
 /**
@@ -948,4 +998,25 @@ tools: [Read, Grep, Glob, Bash]
 4. **No writes.** Read-only. Suggest fixes in text — don't apply them.
 5. **Surface what you didn't check.** If you skipped a generated artifact, say so.
 6. **Don't re-litigate scope.** If something is out-of-scope and reasonable, don't flag it.
+`;
+
+const CLAUDE_LOCAL_STUB = `# CLAUDE.local.md — Personal overrides
+
+This file is **gitignored**. It's yours alone — teammates won't see it.
+
+Claude Code reads it automatically alongside \`CLAUDE.md\`, so anything you put
+here applies only to your sessions. Keep it short; long files dilute the rules
+that actually matter.
+
+Good uses:
+
+- Local environment quirks (e.g. \`source ~/secrets.env\`, custom debug ports, IDE shortcuts).
+- Personal style overrides for your own runs (e.g. "prefer verbose explanations on this repo").
+- Scratch notes on the current task that don't belong in the team's \`decisions.md\`.
+
+Bad uses:
+
+- Anything teammates also need — put that in \`CLAUDE.md\`.
+- Secrets — \`.env\` files are still the right place; this file is committed-adjacent.
+- Long tutorials — link out instead.
 `;

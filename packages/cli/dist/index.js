@@ -1218,7 +1218,7 @@ function cleanupStaging(targetDir) {
 }
 
 // src/generators/claude-files.ts
-import { existsSync as existsSync8, mkdirSync as mkdirSync4, writeFileSync as writeFileSync5, chmodSync } from "fs";
+import { existsSync as existsSync8, mkdirSync as mkdirSync4, writeFileSync as writeFileSync5, chmodSync, readFileSync as readFileSync7, appendFileSync } from "fs";
 import { join as join7, dirname as dirname3 } from "path";
 function ensureDir2(dir) {
   if (!existsSync8(dir)) mkdirSync4(dir, { recursive: true });
@@ -1258,7 +1258,34 @@ function generateClaudeFiles(targetDir, profile, analysis) {
   writeIfNew(claude("skills/git-flow/SKILL.md"), buildGitFlowSkill(analysis), result);
   writeIfNew(claude("skills/error-recovery/SKILL.md"), SKILL_ERROR_RECOVERY, result);
   writeIfNew(claude("skills/pr-flow/SKILL.md"), SKILL_PR_FLOW, result);
+  writeIfNew(join7(targetDir, "CLAUDE.local.md"), CLAUDE_LOCAL_STUB, result);
   return result;
+}
+var AGENTINIT_GITIGNORE_ENTRIES = [
+  ".agents/.tmp/",
+  ".agents/.cache/",
+  ".claude/.cache/",
+  ".claude/.tmp/",
+  "CLAUDE.local.md",
+  ".specify/.tmp/"
+];
+function ensureGitignoreEntries(targetDir, entries) {
+  const path = join7(targetDir, ".gitignore");
+  const existed = existsSync8(path);
+  const current = existed ? readFileSync7(path, "utf-8") : "";
+  const have = new Set(
+    current.split("\n").map((l) => l.trim()).filter(Boolean)
+  );
+  const missing = entries.filter((e) => !have.has(e));
+  if (missing.length === 0) return { added: 0, created: false };
+  const needsLeadingNewline = existed && current.length > 0 && !current.endsWith("\n");
+  const block = (needsLeadingNewline ? "\n" : "") + (existed && current.length > 0 ? "\n" : "") + "# agentinit-managed\n" + missing.join("\n") + "\n";
+  if (existed) {
+    appendFileSync(path, block);
+  } else {
+    writeFileSync5(path, block.replace(/^\n+/, ""));
+  }
+  return { added: missing.length, created: !existed };
 }
 function writeHowToUseSkills(targetDir) {
   const filePath = join7(targetDir, "how-to-use-skills.sh");
@@ -2079,6 +2106,26 @@ tools: [Read, Grep, Glob, Bash]
 5. **Surface what you didn't check.** If you skipped a generated artifact, say so.
 6. **Don't re-litigate scope.** If something is out-of-scope and reasonable, don't flag it.
 `;
+var CLAUDE_LOCAL_STUB = `# CLAUDE.local.md \u2014 Personal overrides
+
+This file is **gitignored**. It's yours alone \u2014 teammates won't see it.
+
+Claude Code reads it automatically alongside \`CLAUDE.md\`, so anything you put
+here applies only to your sessions. Keep it short; long files dilute the rules
+that actually matter.
+
+Good uses:
+
+- Local environment quirks (e.g. \`source ~/secrets.env\`, custom debug ports, IDE shortcuts).
+- Personal style overrides for your own runs (e.g. "prefer verbose explanations on this repo").
+- Scratch notes on the current task that don't belong in the team's \`decisions.md\`.
+
+Bad uses:
+
+- Anything teammates also need \u2014 put that in \`CLAUDE.md\`.
+- Secrets \u2014 \`.env\` files are still the right place; this file is committed-adjacent.
+- Long tutorials \u2014 link out instead.
+`;
 
 // src/rules/adapters/cursor-adapter.ts
 var cursorAdapter = {
@@ -2415,7 +2462,7 @@ function getSkillsForStack(analysis) {
 import { Command as Command2 } from "commander";
 import * as p4 from "@clack/prompts";
 import chalk3 from "chalk";
-import { existsSync as existsSync9, readFileSync as readFileSync7, readdirSync as readdirSync2, statSync as statSync2 } from "fs";
+import { existsSync as existsSync9, readFileSync as readFileSync8, readdirSync as readdirSync2, statSync as statSync2 } from "fs";
 import { join as join8 } from "path";
 import fg2 from "fast-glob";
 var AGENTINIT_MANAGED_GLOBS = [
@@ -2618,7 +2665,7 @@ async function validate(targetDir, agents) {
     absolute: true
   });
   for (const file of mdFiles) {
-    const content = readFileSync7(file, "utf-8");
+    const content = readFileSync8(file, "utf-8");
     const placeholders = findPlaceholders(content);
     if (placeholders.length > 0) {
       const relativePath = file.replace(targetDir + "/", "");
@@ -2681,7 +2728,7 @@ async function validate(targetDir, agents) {
 }
 function countDecisionEntries(filePath) {
   try {
-    const content = readFileSync7(filePath, "utf-8");
+    const content = readFileSync8(filePath, "utf-8");
     const headingMatches = content.match(/^##\s+\S/gm);
     return headingMatches?.length ?? 0;
   } catch {
@@ -2828,6 +2875,12 @@ var initCommand = new Command3("init").description("Analyze project, build profi
   p5.log.success(`Selected agent(s): ${agents.join(", ")}`);
   const isClaudeCode = agents.includes("claude-code");
   p5.log.step("Phase 1: Writing scaffold files...");
+  const gitignoreResult = ensureGitignoreEntries(targetDir, AGENTINIT_GITIGNORE_ENTRIES);
+  if (gitignoreResult.created) {
+    p5.log.success(`Created .gitignore with ${gitignoreResult.added} agentinit entries`);
+  } else if (gitignoreResult.added > 0) {
+    p5.log.success(`Updated .gitignore (+${gitignoreResult.added} agentinit entries)`);
+  }
   const scaffoldResult = writeScaffold({
     targetDir,
     agents,
@@ -3227,7 +3280,7 @@ var clearCommand = new Command5("clear").description("Remove all agentinit-gener
 import { Command as Command6 } from "commander";
 import * as p8 from "@clack/prompts";
 import chalk7 from "chalk";
-import { existsSync as existsSync13, mkdirSync as mkdirSync5, readFileSync as readFileSync8, readdirSync as readdirSync4, writeFileSync as writeFileSync7 } from "fs";
+import { existsSync as existsSync13, mkdirSync as mkdirSync5, readFileSync as readFileSync9, readdirSync as readdirSync4, writeFileSync as writeFileSync7 } from "fs";
 import { join as join12, basename as basename2, resolve as resolve2 } from "path";
 var RULES_DIR = ".agents/rules";
 var CUSTOM_DIR = join12(RULES_DIR, "custom");
@@ -3243,7 +3296,7 @@ function loadProjectRules(targetDir) {
     for (const file of readdirSync4(dir)) {
       if (!file.endsWith(".md")) continue;
       const slug = basename2(file, ".md");
-      const raw = readFileSync8(join12(dir, file), "utf-8");
+      const raw = readFileSync9(join12(dir, file), "utf-8");
       try {
         rules.push(parseRule(raw, slug, dir === builtinDir));
       } catch (err) {
@@ -3339,7 +3392,7 @@ var addCommand = new Command6("add").description("Add a rule to the project").ar
     const customDir = join12(targetDir, CUSTOM_DIR);
     ensureDir3(customDir);
     const slug = basename2(filePath, ".md");
-    const raw = readFileSync8(filePath, "utf-8");
+    const raw = readFileSync9(filePath, "utf-8");
     parseRule(raw, slug);
     const dest = join12(customDir, `${slug}.md`);
     writeFileSync7(dest, raw);
