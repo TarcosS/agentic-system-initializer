@@ -53,6 +53,9 @@ export function generateClaudeFiles(
 
   // --- commands/boot.md ---
   writeIfNew(claude("commands/boot.md"), BOOT_COMMAND, result);
+  const packageScripts = readPackageScripts(targetDir);
+  writeIfNew(claude("commands/verify.md"), buildVerifyCommand(analysis, packageScripts), result);
+  writeIfNew(claude("commands/code-review.md"), CODE_REVIEW_COMMAND, result);
 
   // --- Core agents ---
   writeIfNew(claude("agents/researcher.md"), AGENT_RESEARCHER.replace(/<project-name>/g, analysis.name), result);
@@ -485,6 +488,109 @@ User profile: ${profile.role} / ${profile.domain} / autonomy=${profile.autonomy}
 `;
 }
 
+/**
+ * Read package.json.scripts so /verify, /code-review, and hooks can name the
+ * actual scripts the user has configured rather than guessing. Returns an
+ * empty record when there's no package.json or it can't be parsed.
+ */
+function readPackageScripts(targetDir: string): Record<string, string> {
+  const pkgPath = join(targetDir, "package.json");
+  if (!existsSync(pkgPath)) return {};
+  try {
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
+    const scripts = pkg.scripts;
+    return scripts && typeof scripts === "object" ? scripts : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Build the `/verify` slash command. Lists the verify-loop in dependency order
+ * (typecheck → lint → test → build), naming the actual npm script when one
+ * exists and otherwise falling back to a sensible default for the detected
+ * package manager.
+ */
+function buildVerifyCommand(
+  analysis: ProjectAnalysis,
+  scripts: Record<string, string>,
+): string {
+  const pm = analysis.packageManager;
+  const run = (script: string): string => {
+    if (pm === "pnpm") return `pnpm run ${script}`;
+    if (pm === "yarn") return `yarn ${script}`;
+    if (pm === "bun") return `bun run ${script}`;
+    return `npm run ${script}`;
+  };
+  const directTest = pm === "pnpm" ? "pnpm test" : pm === "yarn" ? "yarn test" : pm === "bun" ? "bun test" : "npm test";
+
+  const steps: Array<{ name: string; cmd: string }> = [];
+  if (scripts.typecheck) steps.push({ name: "typecheck", cmd: run("typecheck") });
+  else if (scripts["type-check"]) steps.push({ name: "typecheck", cmd: run("type-check") });
+  if (scripts.lint) steps.push({ name: "lint", cmd: run("lint") });
+  if (scripts.test) steps.push({ name: "test", cmd: directTest });
+  if (scripts.build) steps.push({ name: "build", cmd: run("build") });
+
+  const fallback = steps.length === 0;
+  if (fallback) {
+    steps.push({ name: "test (fallback)", cmd: directTest });
+  }
+
+  const stepBlock = steps
+    .map((s, i) => `${i + 1}. **${s.name}** — \`${s.cmd}\``)
+    .join("\n");
+
+  return `# /verify
+
+Run the project's verify loop in order. Stop at the first failure and report
+which step failed, with the relevant output, before doing anything else.
+
+${stepBlock}
+
+## Rules
+
+- Run them sequentially, not in parallel — later steps assume earlier ones passed.
+- If a step fails, do NOT proceed. Report the failing command, copy the error,
+  and ask the user how to handle it (don't auto-skip with \`--no-verify\` or by
+  editing the failing test out).
+- This command is the "definition of done" for any change before commit/push.
+  Whenever the user says "verify" or "are we good to commit?", run this.
+${fallback ? `\n- No verify scripts were detected at scaffold time. Run \`agentinit init\`
+  again after you've added \`scripts.typecheck\`/\`scripts.lint\` to \`package.json\`
+  so this command reflects what your project actually has.\n` : ""}`;
+}
+
+const CODE_REVIEW_COMMAND = `# /code-review
+
+Review the current uncommitted diff in a **fresh sub-agent context**. The
+reviewer must not see this conversation's reasoning — only the diff and the
+criteria below.
+
+## What to run
+
+1. Use the \`code-review\` skill bundled with Claude Code if it's available
+   (\`/skill code-review\` from the command palette).
+2. Otherwise, spawn a sub-agent with this brief:
+
+   > Read the output of \`git diff\` (staged and unstaged). Do not read the
+   > conversation history. Report findings as a numbered list of
+   > \`file:line — issue — suggested fix\`. Cover only:
+   > - correctness bugs (off-by-one, null deref, race conditions),
+   > - security issues (injection, secret leakage, missing authz),
+   > - violations of the project's stated requirements or plan
+   >   (see \`SPEC.md\` or the most recent \`.claude/plans/*.md\`).
+   > Flag style/preference items as \`(optional)\`. No "looks good" filler.
+
+## Rules
+
+- Run this **before** opening a PR and **after** \`/verify\` passes.
+- The reviewer flags gaps; treat each one as a decision, not a directive.
+  Style nits and "optional" items can be ignored. Correctness/security gaps
+  should either be fixed or explicitly justified in the PR description.
+- Lint/format issues are not the reviewer's job — the PostToolUse hook handles
+  those during editing.
+`;
+
 function buildCommandsSkill(analysis: ProjectAnalysis): string {
   const pm = analysis.packageManager;
   const install = pm === "yarn" ? "yarn install" : pm === "pnpm" ? "pnpm install" : "npm install";
@@ -662,7 +768,8 @@ Pick the workflow that matches the work. If unsure which, ask the user before st
 3. **Implement in slices.** One logical change + smallest verifying test per slice. Don't pile slices.
 4. **Test between slices** for affected files, not just at the end.
 5. **Self-review the diff.** Look for debug prints, commented-out code, untested branches, unrelated changes.
-6. **PR.** Concise title, body explains the why; link spec/issue.
+6. **Verify and code-review.** Run \`/verify\` (typecheck → lint → test → build) and then \`/code-review\` (fresh sub-agent reviews the diff). Fix what they surface before the PR.
+7. **PR.** Concise title, body explains the why; link spec/issue.
 
 ## Bug fix
 
@@ -775,9 +882,10 @@ description: How to prepare a pull request — title style, body sections, scree
 ## Preparing the PR
 
 1. **Branch is up to date** with default branch (rebase or merge, per repo convention).
-2. **Pre-PR ritual** passes: type-check + lint + full test + build (see \`commands\` skill).
-3. **Diff is reviewable**: one logical change, ≤500 LOC where possible. If larger, split.
-4. **Self-review** in the diff view, not the editor. PRs read differently.
+2. **Pre-PR ritual** passes: run \`/verify\` (type-check + lint + test + build, see \`commands\` skill).
+3. **Run \`/code-review\`** before requesting human reviewers — a fresh sub-agent reviews the diff against the plan and reports correctness/security gaps.
+4. **Diff is reviewable**: one logical change, ≤500 LOC where possible. If larger, split.
+5. **Self-review** in the diff view, not the editor. PRs read differently.
 
 ## PR title
 
