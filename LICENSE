@@ -1,0 +1,89 @@
+PROPRIETARY SOFTWARE LICENSE — INTERNAL USE ONLY
+
+Copyright (c) 2026 DEOP. All rights reserved.
+
+This software, the accompanying `agentic-system-initializer.md` specification,
+the `agentinit` CLI in `packages/cli/`, and every other file in this
+repository (collectively, the "Software") are the confidential and
+proprietary property of DEOP (the "Company"). The Software is licensed,
+not sold. No ownership rights are transferred under any circumstances.
+
+1. PERMITTED USE
+
+   The Software may be used solely by:
+   (a) current employees of the Company, and
+   (b) contractors or partners who have a written agreement with the
+       Company that explicitly grants them access,
+   and only for the Company's own internal business purposes (for example:
+   bootstrapping AI coding agents on the Company's projects, evaluating
+   the Software internally, or developing it further as a Company asset).
+
+   Any other use requires the prior written authorization of the Company.
+
+2. PROHIBITED USE
+
+   Without the prior written authorization of the Company, you may NOT:
+
+   (a) sell, rent, lease, sublicense, host as a paid service, charge for,
+       or otherwise monetize the Software, in whole or in part, directly
+       or indirectly;
+   (b) include the Software in any commercial product or service offered
+       to third parties;
+   (c) distribute, publish, mirror, fork publicly, or otherwise disclose
+       the Software (including its source code, documentation, and the
+       `agentic-system-initializer.md` specification) outside the Company;
+   (d) publish the Software or any package derived from it to npm, any
+       other public or private registry, any package index, any CDN, or
+       any website accessible to parties outside the Company;
+   (e) remove or alter this license, the copyright notice, or any
+       proprietary markings;
+   (f) use the Software for the benefit of any third party (including
+       building client deliverables on top of it) without prior written
+       authorization.
+
+   The non-monetization restriction in (a) and (b) is a core condition of
+   this license. Any attempt to convert the Software into revenue without
+   prior written authorization automatically and immediately terminates
+   all rights granted under this license.
+
+3. CONFIDENTIALITY
+
+   The Software is Confidential Information of the Company. You must
+   protect it with at least the same degree of care you use for your own
+   confidential information, and never less than reasonable care. You
+   must not disclose it to anyone outside the permitted users defined in
+   Section 1.
+
+4. NO WARRANTY
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+   EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE, AND
+   NON-INFRINGEMENT. THE COMPANY MAKES NO REPRESENTATION THAT THE
+   SOFTWARE WILL BE ERROR-FREE OR UNINTERRUPTED.
+
+5. LIMITATION OF LIABILITY
+
+   IN NO EVENT SHALL THE COMPANY BE LIABLE FOR ANY CLAIM, DAMAGES, OR
+   OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE,
+   ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE
+   OR OTHER DEALINGS IN THE SOFTWARE.
+
+6. TERMINATION
+
+   This license terminates automatically and immediately if you breach
+   any of its terms — and in particular if you attempt any of the
+   prohibited uses in Section 2. Upon termination you must stop all use
+   of the Software and destroy every copy in your possession. Sections 2,
+   3, 4, 5, and 7 survive termination.
+
+7. GOVERNING TERMS
+
+   This license is governed by the law agreed in your employment or
+   contractor agreement with the Company. If no such agreement exists,
+   it is governed by the laws applicable at the Company's registered
+   headquarters. Any dispute is subject to the exclusive jurisdiction
+   of the competent courts at that location.
+
+For licensing exceptions, written authorizations, or any question about
+permitted use, contact the Company directly. Do not assume permission.

@@ -31,7 +31,8 @@
     "developer-tools"
   ],
   "author": "DEOPCA",
-  "license": "MIT",
+  "license": "SEE LICENSE IN ../../LICENSE",
+  "private": true,
   "engines": {
     "node": ">=18.0.0"
   },
