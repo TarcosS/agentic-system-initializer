@@ -1235,7 +1235,7 @@ function writeIfNew(filePath, content, result) {
 function generateClaudeFiles(targetDir, profile, analysis) {
   const result = { created: [], skipped: [] };
   const claude = (p9) => join7(targetDir, ".claude", p9);
-  writeIfNew(claude("settings.json"), buildSettingsJson(profile), result);
+  writeIfNew(claude("settings.json"), buildSettingsJson(profile, analysis), result);
   writeIfNew(claude("mcp.json"), buildMcpJson(analysis), result);
   writeIfNew(claude("memory/decisions.md"), buildDecisionsMd2(profile, analysis), result);
   writeIfNew(claude("commands/boot.md"), BOOT_COMMAND, result);
@@ -1482,15 +1482,72 @@ tools: [Read, Write, Edit, Bash, Grep, Glob]
 4. **Coverage is a signal, not a goal.** 100% on a trivial getter is worthless; 0% on the payments path is a blocker.
 5. **No conditional asserts.** \`if (x) expect(...)\` hides bugs.
 `;
-function buildSettingsJson(profile) {
+function buildSettingsJson(profile, analysis) {
   const deny = ["Bash(rm -rf:*)", "Bash(git push --force:*)"];
   if (profile.securityStance === "paranoid") {
     deny.push("Bash(git push --force-with-lease:*)", "Bash(chmod 777:*)");
   }
+  const allow = buildAllowList(analysis);
   return JSON.stringify({
     $schema: "https://json.schemastore.org/claude-code-settings.json",
-    permissions: { deny }
+    permissions: { allow, deny }
   }, null, 2);
+}
+function buildAllowList(analysis) {
+  const allow = [
+    // Always-on: read-only git + filesystem inspection.
+    "Bash(git status:*)",
+    "Bash(git diff:*)",
+    "Bash(git log:*)",
+    "Bash(git branch:*)",
+    "Bash(git show:*)",
+    "Bash(ls:*)",
+    "Bash(cat:*)",
+    "Bash(pwd)",
+    "Bash(which:*)",
+    // Read-only GitHub CLI — Anthropic recommends `gh` for repo work.
+    "Bash(gh pr view:*)",
+    "Bash(gh pr list:*)",
+    "Bash(gh issue view:*)",
+    "Bash(gh issue list:*)",
+    "Bash(gh run view:*)",
+    // MCP servers wired up in mcp.json.
+    "mcp__filesystem__*",
+    "mcp__git__*"
+  ];
+  if (hasFrontend(analysis)) {
+    allow.push("mcp__playwright__*");
+  }
+  const isNode = analysis.languages.some((l) => l === "TypeScript" || l === "JavaScript");
+  if (isNode) {
+    const pm = analysis.packageManager;
+    if (pm === "pnpm") {
+      allow.push("Bash(pnpm test:*)", "Bash(pnpm run:*)", "Bash(pnpm dlx:*)");
+    } else if (pm === "yarn") {
+      allow.push("Bash(yarn test:*)", "Bash(yarn run:*)", "Bash(yarn:*)");
+    } else if (pm === "bun") {
+      allow.push("Bash(bun test:*)", "Bash(bun run:*)", "Bash(bun x:*)");
+    } else {
+      allow.push(
+        "Bash(npm test:*)",
+        "Bash(npm run test:*)",
+        "Bash(npm run lint:*)",
+        "Bash(npm run typecheck:*)",
+        "Bash(npm run build:*)",
+        "Bash(npx:*)"
+      );
+    }
+  }
+  if (analysis.languages.includes("Python")) {
+    allow.push("Bash(pytest:*)", "Bash(ruff:*)", "Bash(mypy:*)", "Bash(black --check:*)");
+  }
+  if (analysis.languages.includes("Rust")) {
+    allow.push("Bash(cargo check:*)", "Bash(cargo test:*)", "Bash(cargo clippy:*)", "Bash(cargo fmt --check:*)");
+  }
+  if (analysis.languages.includes("Go")) {
+    allow.push("Bash(go test:*)", "Bash(go vet:*)", "Bash(go build:*)");
+  }
+  return allow;
 }
 var FRONTEND_FRAMEWORKS = /* @__PURE__ */ new Set([
   "React",

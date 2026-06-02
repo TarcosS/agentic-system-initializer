@@ -43,7 +43,7 @@ export function generateClaudeFiles(
   const claude = (p: string) => join(targetDir, ".claude", p);
 
   // --- settings.json ---
-  writeIfNew(claude("settings.json"), buildSettingsJson(profile), result);
+  writeIfNew(claude("settings.json"), buildSettingsJson(profile, analysis), result);
 
   // --- mcp.json ---
   writeIfNew(claude("mcp.json"), buildMcpJson(analysis), result);
@@ -351,15 +351,78 @@ tools: [Read, Write, Edit, Bash, Grep, Glob]
 
 // ── Builders ──────────────────────────────────────────────────
 
-function buildSettingsJson(profile: UserProfile): string {
+function buildSettingsJson(profile: UserProfile, analysis: ProjectAnalysis): string {
   const deny = ["Bash(rm -rf:*)", "Bash(git push --force:*)"];
   if (profile.securityStance === "paranoid") {
     deny.push("Bash(git push --force-with-lease:*)", "Bash(chmod 777:*)");
   }
+  const allow = buildAllowList(analysis);
   return JSON.stringify({
     $schema: "https://json.schemastore.org/claude-code-settings.json",
-    permissions: { deny },
+    permissions: { allow, deny },
   }, null, 2);
+}
+
+/**
+ * Stack-driven allow list. Each entry permits a class of safe commands so
+ * Claude Code doesn't prompt for them. We bias toward read-only/inspection
+ * commands plus the common verify-loop scripts (test/lint/typecheck/build).
+ */
+function buildAllowList(analysis: ProjectAnalysis): string[] {
+  const allow: string[] = [
+    // Always-on: read-only git + filesystem inspection.
+    "Bash(git status:*)",
+    "Bash(git diff:*)",
+    "Bash(git log:*)",
+    "Bash(git branch:*)",
+    "Bash(git show:*)",
+    "Bash(ls:*)",
+    "Bash(cat:*)",
+    "Bash(pwd)",
+    "Bash(which:*)",
+    // Read-only GitHub CLI — Anthropic recommends `gh` for repo work.
+    "Bash(gh pr view:*)",
+    "Bash(gh pr list:*)",
+    "Bash(gh issue view:*)",
+    "Bash(gh issue list:*)",
+    "Bash(gh run view:*)",
+    // MCP servers wired up in mcp.json.
+    "mcp__filesystem__*",
+    "mcp__git__*",
+  ];
+
+  if (hasFrontend(analysis)) {
+    allow.push("mcp__playwright__*");
+  }
+
+  // Node verify loop — keyed off package manager detection so we don't add
+  // bun-specific allows on an npm project (and vice versa).
+  const isNode = analysis.languages.some((l) => l === "TypeScript" || l === "JavaScript");
+  if (isNode) {
+    const pm = analysis.packageManager;
+    if (pm === "pnpm") {
+      allow.push("Bash(pnpm test:*)", "Bash(pnpm run:*)", "Bash(pnpm dlx:*)");
+    } else if (pm === "yarn") {
+      allow.push("Bash(yarn test:*)", "Bash(yarn run:*)", "Bash(yarn:*)");
+    } else if (pm === "bun") {
+      allow.push("Bash(bun test:*)", "Bash(bun run:*)", "Bash(bun x:*)");
+    } else {
+      allow.push("Bash(npm test:*)", "Bash(npm run test:*)", "Bash(npm run lint:*)",
+                 "Bash(npm run typecheck:*)", "Bash(npm run build:*)", "Bash(npx:*)");
+    }
+  }
+
+  if (analysis.languages.includes("Python")) {
+    allow.push("Bash(pytest:*)", "Bash(ruff:*)", "Bash(mypy:*)", "Bash(black --check:*)");
+  }
+  if (analysis.languages.includes("Rust")) {
+    allow.push("Bash(cargo check:*)", "Bash(cargo test:*)", "Bash(cargo clippy:*)", "Bash(cargo fmt --check:*)");
+  }
+  if (analysis.languages.includes("Go")) {
+    allow.push("Bash(go test:*)", "Bash(go vet:*)", "Bash(go build:*)");
+  }
+
+  return allow;
 }
 
 const FRONTEND_FRAMEWORKS = new Set([
