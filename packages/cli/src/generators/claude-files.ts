@@ -58,6 +58,7 @@ export function generateClaudeFiles(
   writeIfNew(claude("commands/code-review.md"), CODE_REVIEW_COMMAND, result);
   writeIfNew(claude("commands/spec.md"), SPEC_COMMAND, result);
   writeIfNew(claude("plans/.gitkeep"), "", result);
+  writeIfNew(claude("commands/ci.md"), CI_COMMAND, result);
 
   // --- Core agents ---
   writeIfNew(claude("agents/researcher.md"), AGENT_RESEARCHER.replace(/<project-name>/g, analysis.name), result);
@@ -688,6 +689,10 @@ ${lint} && ${test}
 - Hook bypass (\`--no-verify\`) is forbidden unless explicitly authorized.
 - If a command fails, read the error fully before re-running. Don't loop blindly.
 - Long-running commands (full test, build): use the platform's background mechanism, don't block the conversation.
+
+## External CLIs
+
+\`gh\`, \`aws\`, \`gcloud\`, and \`sentry-cli\` are the most context-efficient way to talk to external services and their read-only forms (\`gh pr view\`, \`gh issue list\`, etc.) are allow-listed in \`.claude/settings.json\` so they don't trigger approval prompts. Prefer them over scripting the underlying HTTP APIs.
 `;
 }
 
@@ -724,6 +729,16 @@ Run the pre-push ritual (see \`commands\` skill):
 
 - **Push to:** \`origin <your branch>\`
 - **Force-push:** never to shared branches. On your own feature branch, use \`--force-with-lease\`, not \`--force\`.
+
+## Parallel work
+
+For features you want to develop alongside another in-progress branch, use a git worktree so each Claude Code session has its own checkout and the edits don't collide:
+
+\`\`\`bash
+git worktree add ../<project>-<branch> <branch>
+\`\`\`
+
+Each worktree is a full checkout sharing the same \`.git\` dir — open Claude Code in either directory and they can run in parallel.
 `;
 }
 
@@ -858,6 +873,10 @@ Pick the workflow that matches the work. If unsure which, ask the user before st
 1. **Time-box** ("30 min to learn whether X handles Y").
 2. **Throwaway branch** or scratch directory.
 3. **Output is a memo**, not merged code.
+
+## Extending your toolkit mid-task
+
+If a task hits a gap (no skill for X, no agent for Y), run \`/plugin\` and search the marketplace before writing one from scratch. Many common gaps already have community skills, hooks, or sub-agents you can install in one click.
 `;
 
 const SKILL_CONVENTIONS = `---
@@ -1032,6 +1051,12 @@ A 5-7 line block:
 - Make any writes. \`/boot\` is read-only.
 
 If a key file is missing (e.g., \`CLAUDE.md\` doesn't exist), the scaffold isn't initialized — stop and ask the user whether to run the Initializer.
+
+## Tips for this session
+
+- For unattended runs, launch Claude Code with \`claude --permission-mode auto\` — a classifier model handles routine approvals and only escalates risky actions.
+- Run \`/statusline\` once to set up a status line showing context usage; it makes "context filling up" a visible signal instead of a guess.
+- Run \`/plugin\` to browse skills, hooks, and sub-agents from the community marketplace.
 `;
 
 const AGENT_RESEARCHER = `---
@@ -1227,6 +1252,52 @@ tools: [Read, Grep, Glob, Bash]
 4. **No writes.** Read-only. Suggest fixes in text — don't apply them.
 5. **Surface what you didn't check.** If you skipped a generated artifact, say so.
 6. **Don't re-litigate scope.** If something is out-of-scope and reasonable, don't flag it.
+`;
+
+const CI_COMMAND = `# /ci
+
+Recipes for running Claude Code non-interactively in CI, pre-commit hooks, or
+any unattended script. Use \`claude -p\` (non-interactive / "headless" mode).
+
+## Quick reference
+
+\`\`\`bash
+# One-off question, plain text output (default).
+claude -p "Explain what this project does"
+
+# Structured output for downstream scripts.
+claude -p "List all API endpoints" --output-format json
+
+# Streaming for real-time UIs (one JSON event per line).
+claude -p "Analyze this log file" --output-format stream-json --verbose
+
+# Restrict what the unattended run is allowed to do.
+claude -p "fix all lint errors" --allowedTools "Edit,Bash(npm run lint:*)"
+
+# Auto-mode: a classifier handles approvals; the run aborts if it can't
+# get past a risky action without a human.
+claude -p "implement the rate limiter from PLAN.md" --permission-mode auto
+\`\`\`
+
+## Patterns from the best practices doc
+
+- **Fan out across files** — generate a task list, then loop \`claude -p\` once
+  per file. Use \`--allowedTools\` to keep the per-invocation surface tight.
+  Test on 2-3 entries before running on the full set.
+- **Pipe into existing pipelines** — \`claude -p "<prompt>" --output-format json | jq ...\`
+  works as a step inside any shell pipeline.
+- **CI gate** — run \`claude -p\` against the diff and exit non-zero on
+  findings to fail the build (see https://code.claude.com/docs/en/headless
+  for output schemas).
+
+## Rules
+
+- \`--allowedTools\` is required for any unattended run that can write. Don't
+  ship a CI job that has full write access without bounds.
+- \`--verbose\` is useful during development; turn it off in production so logs
+  don't fill with debug output.
+- Auto-mode aborts when the classifier repeatedly blocks an action — design
+  prompts so a clean run doesn't hit that path.
 `;
 
 const SPEC_COMMAND = `# /spec
