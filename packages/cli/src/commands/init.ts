@@ -8,9 +8,24 @@ import { collectProfile, saveProfile, type UserProfile } from "./profile.js";
 import { selectAgents, type AgentId } from "../utils/agent-selector.js";
 import { generatePrompt } from "../generators/prompt.js";
 import { canDispatch, dispatchToAgent, isIdeAgent, getDispatchInstructions } from "../utils/dispatch.js";
+import { writeScaffold, copyClaudeStagingToTarget, cleanupStaging } from "../generators/scaffold.js";
+import { generateClaudeFiles, writeHowToUseSkills } from "../generators/claude-files.js";
+import { loadBuiltinRules } from "../rules/loader.js";
+import { compileRulesForAgents } from "../rules/compiler.js";
+import { getSkillsForStack } from "../utils/stack-skills.js";
+import { validate } from "./validate.js";
+
+const COPILOT_AGENT_FLAG: Record<string, string> = {
+  "claude-code": "claude-code",
+  copilot: "github-copilot",
+  cursor: "cursor",
+  codex: "codex",
+  cline: "cline",
+  windsurf: "windsurf",
+};
 
 export const initCommand = new Command("init")
-  .description("Analyze project, build profile, generate prompt, and dispatch to agent")
+  .description("Analyze project, build profile, scaffold files, and dispatch to agent")
   .argument("[directory]", "Target directory", ".")
   .option("--agent <agents...>", "Pre-select agent(s) to skip interactive selection")
   .option("--skip-profile", "Use default profile (senior, high autonomy)")
@@ -55,6 +70,144 @@ export const initCommand = new Command("init")
       agents = await selectAgents();
     }
     p.log.success(`Selected agent(s): ${agents.join(", ")}`);
+
+    const isClaudeCode = agents.includes("claude-code" as AgentId);
+
+    // ═══════════════════════════════════════════════════════════
+    // Phase 1: Deterministic scaffolding (Node.js, before AI)
+    // ═══════════════════════════════════════════════════════════
+    p.log.step("Phase 1: Writing scaffold files...");
+
+    // 1a. Write shared scaffold (CLAUDE.md, AGENTS.md, decisions.md, shared instructions)
+    const scaffoldResult = writeScaffold({
+      targetDir,
+      agents,
+      profile,
+      analysis,
+    });
+    if (scaffoldResult.created.length > 0) {
+      p.log.success(`Created ${scaffoldResult.created.length} scaffold file(s)`);
+    }
+    if (scaffoldResult.errors.length > 0) {
+      for (const err of scaffoldResult.errors) {
+        p.log.warn(`Scaffold error: ${err}`);
+      }
+    }
+
+    // 1b. Write how-to-use-skills.sh
+    if (writeHowToUseSkills(targetDir)) {
+      p.log.success("Created how-to-use-skills.sh");
+    }
+
+    // 1c. Write .claude/ files (settings.json, mcp.json, agents, skills, commands, memory)
+    if (isClaudeCode) {
+      const claudeResult = generateClaudeFiles(targetDir, profile, analysis);
+      if (claudeResult.created.length > 0) {
+        p.log.success(
+          `Created ${claudeResult.created.length} file(s) in .claude/`
+        );
+      }
+    }
+
+    // 1d. Add & compile rules
+    const builtinRules = loadBuiltinRules();
+    if (builtinRules.length > 0) {
+      const { writeFileSync, mkdirSync } = await import("node:fs");
+      // Copy builtin rules to project
+      const builtinDir = join(targetDir, ".agents", "rules", "builtin");
+      if (!existsSync(builtinDir)) mkdirSync(builtinDir, { recursive: true });
+
+      let rulesAdded = 0;
+      for (const rule of builtinRules) {
+        const dest = join(builtinDir, `${rule.slug}.md`);
+        if (!existsSync(dest)) {
+          const { getBuiltinRuleContent } = await import("../rules/loader.js");
+          const content = getBuiltinRuleContent(rule.slug);
+          if (content) {
+            writeFileSync(dest, content);
+            rulesAdded++;
+          }
+        }
+      }
+      if (rulesAdded > 0) {
+        p.log.success(`Added ${rulesAdded} built-in rule(s)`);
+      }
+
+      // Compile rules for all selected agents
+      const compiled = compileRulesForAgents(builtinRules, agents);
+      let totalCompiled = 0;
+      for (const [, files] of compiled) {
+        for (const file of files) {
+          const fullPath = join(targetDir, file.path);
+          const dir = join(fullPath, "..");
+          if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+          writeFileSync(fullPath, file.content);
+          totalCompiled++;
+        }
+      }
+      if (totalCompiled > 0) {
+        p.log.success(`Compiled ${totalCompiled} rule file(s) for ${agents.join(", ")}`);
+      }
+    }
+
+    // 1e. Install stack-driven skills (best-effort, per-skill)
+    const skillSet = getSkillsForStack(analysis);
+    const agentFlags = Array.from(
+      new Set(
+        agents
+          .map((a) => COPILOT_AGENT_FLAG[a])
+          .filter((f): f is string => Boolean(f)),
+      ),
+    );
+    p.log.step(`Installing ${skillSet.length} stack-driven skill(s)...`);
+    const { execSync } = await import("node:child_process");
+    let skillsInstalled = 0;
+    const skillsFailed: string[] = [];
+    for (const s of skillSet) {
+      // Whole-repo entries (s.skill undefined) install with `npx skills add
+      // <repo>`'s defaults: all skills, all agents, project scope, symlink —
+      // no -a/--skill flags. Per-skill entries still install per-agent so
+      // the targeted skill lands in each selected agent's skill dir.
+      const isWholeRepo = !s.skill;
+      try {
+        if (isWholeRepo) {
+          execSync(`npx skills add ${s.repo} -y`, {
+            cwd: targetDir,
+            stdio: "pipe",
+            timeout: 120_000,
+          });
+        } else if (agentFlags.length === 0) {
+          execSync(`npx skills add ${s.repo} --skill ${s.skill} -y`, {
+            cwd: targetDir,
+            stdio: "pipe",
+            timeout: 120_000,
+          });
+        } else {
+          for (const flag of agentFlags) {
+            execSync(`npx skills add ${s.repo} --skill ${s.skill} -a ${flag} -y`, {
+              cwd: targetDir,
+              stdio: "pipe",
+              timeout: 120_000,
+            });
+          }
+        }
+        skillsInstalled++;
+      } catch {
+        skillsFailed.push(s.skill ? `${s.repo}/${s.skill}` : s.repo);
+      }
+    }
+    if (skillsInstalled > 0) {
+      p.log.success(`Installed ${skillsInstalled}/${skillSet.length} skill(s)`);
+    }
+    if (skillsFailed.length > 0) {
+      p.log.warn(
+        `Skill installs that failed (likely registry/network): ${skillsFailed.join(", ")}`,
+      );
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // Phase 2: AI dispatch (reduced scope — customize & extend)
+    // ═══════════════════════════════════════════════════════════
 
     // Find spec file (optional — CDN is used by default)
     const specPath = options.spec ?? findSpecFile(targetDir);
@@ -108,6 +261,33 @@ export const initCommand = new Command("init")
       }
     }
 
+    // ═══════════════════════════════════════════════════════════
+    // Phase 3: Post-dispatch — staging copy + validation
+    // ═══════════════════════════════════════════════════════════
+
+    // Copy staged .claude/ files (if AI wrote to staging)
+    if (isClaudeCode) {
+      const stagingResult = copyClaudeStagingToTarget(targetDir);
+      if (stagingResult.copied.length > 0) {
+        p.log.success(
+          `Moved ${stagingResult.copied.length} staged file(s) to .claude/`
+        );
+        cleanupStaging(targetDir);
+      }
+    }
+
+    // Validate scaffold completeness
+    p.log.step("Validating scaffold...");
+    const validationResult = await validate(targetDir, agents as string[]);
+    if (validationResult.issues.length === 0) {
+      p.log.success(`All checks passed (${validationResult.passed}/${validationResult.total}) ✓`);
+    } else {
+      p.log.warn(`${validationResult.issues.length} issue(s) found:`);
+      for (const issue of validationResult.issues) {
+        p.log.message(`  ${chalk.yellow("!")} ${issue}`);
+      }
+    }
+
     // Report
     p.note(
       [
@@ -115,16 +295,22 @@ export const initCommand = new Command("init")
         `Profile: ${profile.role} / ${profile.domain} / autonomy=${profile.autonomy}`,
         `Spec: ${specPath ?? "CDN (remote)"}`,
         "",
-        "The agent will now:",
-        "  1. Read your project structure",
-        "  2. Install relevant skills (npx skills add ...)",
-        "  3. Generate config files + custom agents",
-        "  4. Write decisions.md and scaffold",
-      ].join("\n"),
-      "Dispatched"
+        "Phase 1 (deterministic) created:",
+        "  • Scaffold files (CLAUDE.md, AGENTS.md, decisions.md)",
+        isClaudeCode ? "  • .claude/ structure (settings, agents, skills, commands)" : "",
+        `  • ${builtinRules.length} compiled rules`,
+        "",
+        "Phase 2 (AI) customized:",
+        "  • Project-specific CLAUDE.md content",
+        "  • Specialist sub-agents based on stack",
+        "  • Additional skills discovery",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      "Complete"
     );
 
-    p.outro("Run `agentinit validate` after the agent finishes to verify the scaffold.");
+    p.outro("Run `agentinit validate` to re-check scaffold integrity.");
   });
 
 function findSpecFile(startDir: string): string | null {
