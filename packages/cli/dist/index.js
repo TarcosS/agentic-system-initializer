@@ -1242,6 +1242,8 @@ function generateClaudeFiles(targetDir, profile, analysis) {
   writeIfNew(claude("commands/boot.md"), BOOT_COMMAND, result);
   writeIfNew(claude("commands/verify.md"), buildVerifyCommand(analysis, packageScripts), result);
   writeIfNew(claude("commands/code-review.md"), CODE_REVIEW_COMMAND, result);
+  writeIfNew(claude("commands/spec.md"), SPEC_COMMAND, result);
+  writeIfNew(claude("plans/.gitkeep"), "", result);
   writeIfNew(claude("agents/researcher.md"), AGENT_RESEARCHER.replace(/<project-name>/g, analysis.name), result);
   writeIfNew(claude("agents/implementer.md"), AGENT_IMPLEMENTER.replace(/<project-name>/g, analysis.name), result);
   writeIfNew(claude("agents/reviewer.md"), AGENT_REVIEWER.replace(/<project-name>/g, analysis.name), result);
@@ -1880,7 +1882,7 @@ Pick the workflow that matches the work. If unsure which, ask the user before st
 ## Feature work (non-trivial)
 
 1. **Spec.** Draft a short spec (problem, goals, non-goals, design sketch, acceptance criteria) for anything spanning >1 file or with unclear requirements. Use \`/speckit.specify\` if Spec-Kit is installed.
-2. **Plan.** List files you'll touch and the order. If >5 files, get the plan reviewed first.
+2. **Plan.** List files you'll touch and the order. If >5 files, get the plan reviewed first. Plans live in \`.claude/plans/<slug>.md\` so \`adversarial-reviewer\` can read them when grading the final diff.
 3. **Implement in slices.** One logical change + smallest verifying test per slice. Don't pile slices.
 4. **Test between slices** for affected files, not just at the end.
 5. **Self-review the diff.** Look for debug prints, commented-out code, untested branches, unrelated changes.
@@ -2278,6 +2280,49 @@ tools: [Read, Grep, Glob, Bash]
 4. **No writes.** Read-only. Suggest fixes in text \u2014 don't apply them.
 5. **Surface what you didn't check.** If you skipped a generated artifact, say so.
 6. **Don't re-litigate scope.** If something is out-of-scope and reasonable, don't flag it.
+`;
+var SPEC_COMMAND = `# /spec
+
+Interview the user about a feature, then write a complete spec to \`SPEC.md\`.
+
+## What to do
+
+You will use the \`AskUserQuestion\` tool to interview the user. Cover, in this order:
+
+1. **Goal** \u2014 what problem this feature solves, who benefits, why now.
+2. **Scope** \u2014 what's in, what's deliberately out. Name files/modules that will
+   change. Name the boundaries that won't.
+3. **Edge cases** \u2014 auth states, empty/loading/error UI, concurrency, partial
+   failures, migration of existing data.
+4. **Constraints** \u2014 performance, accessibility, security, compliance, browser
+   support.
+5. **Acceptance criteria** \u2014 what passing tests, screens, or commands prove it
+   works end-to-end.
+6. **Risks and tradeoffs** \u2014 the second-best alternative the user considered and
+   why this one wins.
+
+## Rules
+
+- **Use \`AskUserQuestion\` for every clarification.** Don't ask conversational
+  open-ended questions; force a structured choice so the user can answer in one
+  click. Free-text is the option of last resort.
+- **Don't ask obvious questions** ("Should it work?"). Dig into the hard parts
+  the user might not have considered yet \u2014 race conditions, irreversible
+  actions, what happens when an upstream service is down.
+- **Keep interviewing until you've covered every section above.** A spec with
+  three unanswered questions is worse than no spec.
+- **Then write \`SPEC.md\`** at the repo root with these sections:
+  Goal \xB7 Scope (In / Out) \xB7 User flows \xB7 Data model changes \xB7 Edge cases \xB7
+  Acceptance criteria \xB7 Open questions \xB7 Out of scope.
+- **End the command** by telling the user: "Spec written to SPEC.md. Start a
+  fresh session and run \`/plan\` (or \`/speckit.plan\` if Spec-Kit is installed)
+  to design the implementation."
+
+## Why this matters
+
+A precise spec costs less than the rework it prevents. The whole point of
+running this command in a separate session is so the implementation session
+starts with a clean context and a written contract.
 `;
 var AGENT_ADVERSARIAL_REVIEWER = `---
 name: adversarial-reviewer
