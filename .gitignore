@@ -1,4 +1,9 @@
-.agents/.tmp/
+**/node_modules
+**/dist
 node_modules/
 dist/
 *.tgz
+
+# Agentic
+**/.agents
+**/.claude

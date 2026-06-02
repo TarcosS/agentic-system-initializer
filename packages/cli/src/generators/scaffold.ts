@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync, readdirSync, statSync, copyFileSync, rmSync, rmdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import type { AgentId } from "../utils/agent-selector.js";
 import type { UserProfile } from "../commands/profile.js";
@@ -55,7 +55,16 @@ export function writeScaffold(options: ScaffoldOptions): ScaffoldResult {
     overwrite
   );
 
-  // 5. Write agent-specific scaffolds from templates
+  // 5. Always write a minimal AGENTS.md pointer (shared across agents).
+  //    Codex scaffolding below will overwrite with its richer template when selected.
+  writeIfMissing(
+    join(targetDir, "AGENTS.md"),
+    buildAgentsMd(agents, analysis),
+    result,
+    overwrite
+  );
+
+  // 6. Write agent-specific scaffolds from templates
   for (const agent of agents) {
     try {
       scaffoldAgent(targetDir, agent, vars, result, overwrite);
@@ -141,6 +150,43 @@ function buildDecisionsMd(analysis: ProjectAnalysis): string {
   ].join("\n");
 }
 
+function buildAgentsMd(agents: AgentId[], analysis: ProjectAnalysis): string {
+  const stack = [...analysis.languages, ...analysis.frameworks].join(", ") || "unknown";
+  const agentLines: string[] = [];
+  if (agents.includes("claude-code")) agentLines.push("- **Claude Code:** see `CLAUDE.md` and `.claude/`");
+  if (agents.includes("copilot")) agentLines.push("- **GitHub Copilot:** see `.github/copilot-instructions.md` and `.github/instructions/`");
+  if (agents.includes("cursor")) agentLines.push("- **Cursor:** see `.cursor/rules/`");
+  if (agents.includes("gemini-cli")) agentLines.push("- **Gemini CLI:** see `GEMINI.md`");
+  if (agents.includes("cline")) agentLines.push("- **Cline:** see `.clinerules/`");
+  if (agents.includes("windsurf")) agentLines.push("- **Windsurf:** see `.windsurf/rules/`");
+  if (agents.includes("roo-code")) agentLines.push("- **Roo Code:** see `.roo/rules/`");
+  if (agents.includes("kilo-code")) agentLines.push("- **Kilo Code:** see `.kilocode/rules/`");
+  return [
+    "# AGENTS.md",
+    "",
+    `> Pointer file for AI coding agents working on **${analysis.name}**.`,
+    `> Stack: ${stack}`,
+    "",
+    "## How agents should use this repo",
+    "",
+    "1. Read `.agents/instructions/shared.md` for user-profile + project-stack context.",
+    "2. Read `.agents/memory/decisions.md` before architectural choices.",
+    "3. Follow the rules in `.agents/rules/builtin/` (compiled per-agent variants live under each agent's directory).",
+    "4. Match existing code patterns before introducing new ones.",
+    "",
+    "## Agent-specific entry points",
+    "",
+    ...(agentLines.length > 0 ? agentLines : ["- (none configured)"]),
+    "",
+    "## Shared resources",
+    "",
+    "- `how-to-use-skills.sh` — Skills CLI cheat-sheet",
+    "- `.agents/profile.json` — user developer profile",
+    "- `.agents/rules/builtin/` — source-of-truth for compiled rules",
+    "",
+  ].join("\n");
+}
+
 function buildSharedInstructions(profile: UserProfile, analysis: ProjectAnalysis): string {
   return [
     "# Shared Agent Instructions",
@@ -188,5 +234,82 @@ function writeIfMissing(
     result.created.push(filePath);
   } catch (err) {
     result.errors.push(`${filePath}: ${err}`);
+  }
+}
+
+// --- Claude Code staging → .claude/ copy ---
+
+export const CLAUDE_STAGING_DIR = ".agents/staging/claude-config";
+
+export interface StagingCopyResult {
+  copied: string[];
+  errors: string[];
+}
+
+/**
+ * Copies staged `.claude/` files from the staging area to `.claude/`.
+ * Claude Code's sandbox blocks all writes to `.claude/` paths, so
+ * the init prompt instructs the AI to write to `.agents/staging/claude-config/`
+ * instead. This function moves them to the real location after dispatch.
+ */
+export function copyClaudeStagingToTarget(targetDir: string): StagingCopyResult {
+  const result: StagingCopyResult = { copied: [], errors: [] };
+  const stagingDir = join(targetDir, CLAUDE_STAGING_DIR);
+
+  if (!existsSync(stagingDir)) {
+    return result;
+  }
+
+  const claudeDir = join(targetDir, ".claude");
+  ensureDir(claudeDir);
+
+  copyDirRecursive(stagingDir, claudeDir, result);
+  return result;
+}
+
+function copyDirRecursive(
+  src: string,
+  dest: string,
+  result: StagingCopyResult,
+): void {
+  const entries = readdirSync(src);
+  for (const entry of entries) {
+    const srcPath = join(src, entry);
+    const destPath = join(dest, entry);
+    const stat = statSync(srcPath);
+
+    if (stat.isDirectory()) {
+      ensureDir(destPath);
+      copyDirRecursive(srcPath, destPath, result);
+    } else {
+      try {
+        ensureDir(dirname(destPath));
+        copyFileSync(srcPath, destPath);
+        result.copied.push(destPath);
+      } catch (err) {
+        result.errors.push(`${destPath}: ${err}`);
+      }
+    }
+  }
+}
+
+/**
+ * Cleans up the staging directory after files have been copied.
+ */
+export function cleanupStaging(targetDir: string): void {
+  const stagingDir = join(targetDir, CLAUDE_STAGING_DIR);
+  if (existsSync(stagingDir)) {
+    rmSync(stagingDir, { recursive: true, force: true });
+  }
+  // Remove .agents/staging/ if empty
+  const parentStaging = join(targetDir, ".agents", "staging");
+  if (existsSync(parentStaging)) {
+    try {
+      if (readdirSync(parentStaging).length === 0) {
+        rmdirSync(parentStaging);
+      }
+    } catch {
+      // ignore
+    }
   }
 }

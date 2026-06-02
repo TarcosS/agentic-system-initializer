@@ -7,7 +7,7 @@
     "agentinit": "./dist/index.js"
   },
   "scripts": {
-    "build": "tsup src/index.ts --format esm --dts --clean && mkdir -p dist/rules && cp -r src/rules/builtin dist/rules/builtin && cp -r src/templates dist/templates",
+    "build": "tsup src/index.ts --format esm --dts --clean && rm -rf dist/rules dist/templates && mkdir -p dist/rules && cp -r src/rules/builtin dist/rules/builtin && cp -r src/templates dist/templates",
     "dev": "tsup src/index.ts --format esm --watch",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",

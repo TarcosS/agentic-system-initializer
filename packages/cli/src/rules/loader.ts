@@ -7,18 +7,31 @@ import type { Rule } from "./schema.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirnamePath = dirname(__filename);
 
+function hasMarkdownFiles(dir: string): boolean {
+  if (!existsSync(dir)) return false;
+  try {
+    return readdirSync(dir).some((f) => f.endsWith(".md"));
+  } catch {
+    return false;
+  }
+}
+
 function getBuiltinDir(): string {
-  // Bundled output: dist/rules/builtin (copied by build script)
-  const bundled = join(__dirnamePath, "rules", "builtin");
-  if (existsSync(bundled)) return bundled;
-  // Dev / unbundled: ../rules/builtin relative to this file
-  const dev = join(__dirnamePath, "builtin");
-  if (existsSync(dev)) return dev;
-  // Fallback: source layout
-  const src = join(__dirnamePath, "..", "rules", "builtin");
-  if (existsSync(src)) return src;
-  // Last resort
-  return bundled;
+  const candidates = [
+    // Bundled output (correct layout)
+    join(__dirnamePath, "rules", "builtin"),
+    // Bundled output (legacy double-nested from older build script)
+    join(__dirnamePath, "rules", "builtin", "builtin"),
+    // Dev / unbundled: ../rules/builtin relative to this file
+    join(__dirnamePath, "builtin"),
+    // Source layout
+    join(__dirnamePath, "..", "rules", "builtin"),
+  ];
+  for (const c of candidates) {
+    if (hasMarkdownFiles(c)) return c;
+  }
+  // Last resort — first existing dir even if empty
+  return candidates.find((c) => existsSync(c)) ?? candidates[0]!;
 }
 
 export const BUILTIN_RULE_SLUGS = [
