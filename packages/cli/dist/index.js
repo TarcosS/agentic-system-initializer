@@ -2457,8 +2457,8 @@ N. <file>:<line> \u2014 <one-line problem statement>
 End with one of:
 - "**No blocking gaps found.**" \u2014 diff matches the spec, no correctness/security issues.
 - "**N blocking gap(s) found.**" \u2014 fix before merging.
-- "**Cannot review: <reason>**" \u2014 e.g., no spec available and the user did not
-  name requirements.
+- "**Cannot review (reason):**" followed by the reason on the next line \u2014 e.g.,
+  no spec available and the user did not name requirements.
 
 ## Hard rules
 

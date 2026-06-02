@@ -1407,8 +1407,8 @@ N. <file>:<line> — <one-line problem statement>
 End with one of:
 - "**No blocking gaps found.**" — diff matches the spec, no correctness/security issues.
 - "**N blocking gap(s) found.**" — fix before merging.
-- "**Cannot review: <reason>**" — e.g., no spec available and the user did not
-  name requirements.
+- "**Cannot review (reason):**" followed by the reason on the next line — e.g.,
+  no spec available and the user did not name requirements.
 
 ## Hard rules
 
